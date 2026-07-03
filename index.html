@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>履歴書PDF部分編集MVP</title>
+<style>
+  body { font-family: sans-serif; margin: 20px; }
+  #pages { margin-top: 20px; }
+  .page-wrap { position: relative; display: inline-block; margin-bottom: 20px; border: 1px solid #ccc; }
+  .page-wrap img { display: block; }
+  .block-box {
+    position: absolute;
+    border: 1px solid rgba(255, 0, 0, 0.6);
+    background: rgba(255, 0, 0, 0.05);
+    cursor: pointer;
+    box-sizing: border-box;
+  }
+  .block-box:hover { background: rgba(255, 0, 0, 0.25); }
+  .block-box.edited { border-color: rgba(0, 128, 0, 0.8); background: rgba(0, 128, 0, 0.15); }
+  #status { margin-top: 10px; color: #333; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+  <h1>履歴書PDF部分編集MVP</h1>
+
+  <input type="file" id="fileInput" accept="application/pdf">
+  <button id="uploadBtn">アップロードして解析</button>
+  <button id="downloadBtn" disabled>編集後PDFをダウンロード</button>
+
+  <div id="status"></div>
+  <div id="pages"></div>
+
+<script>
+const PREVIEW_ZOOM = 2.0; // api_server.py の PREVIEW_ZOOM と合わせる
+
+let originalFile = null;   // 最初にアップロードしたPDFのFileオブジェクト
+let pagesData = [];        // /extract のレスポンス pages
+let blocksData = [];       // /extract のレスポンス blocks
+const editsByKey = {};     // "page:index" -> edit指定オブジェクト
+
+const fileInput = document.getElementById('fileInput');
+const uploadBtn = document.getElementById('uploadBtn');
+const downloadBtn = document.getElementById('downloadBtn');
+const statusEl = document.getElementById('status');
+const pagesEl = document.getElementById('pages');
+
+function setStatus(msg) {
+  statusEl.textContent = msg;
+}
+
+uploadBtn.addEventListener('click', async () => {
+  const file = fileInput.files[0];
+  if (!file) {
+    setStatus('PDFファイルを選択してください。');
+    return;
+  }
+  originalFile = file;
+  downloadBtn.disabled = true;
+
+  setStatus('アップロード中...');
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch('/extract', { method: 'POST', body: formData });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`HTTP ${res.status}: ${err}`);
+    }
+    const data = await res.json();
+    pagesData = data.pages;
+    blocksData = data.blocks;
+    Object.keys(editsByKey).forEach(k => delete editsByKey[k]);
+    renderPages();
+    setStatus(`解析完了: ${pagesData.length}ページ, ${blocksData.length}ブロック検出`);
+  } catch (e) {
+    setStatus('エラー: ' + e.message);
+  }
+});
+
+function renderPages() {
+  pagesEl.innerHTML = '';
+  pagesData.forEach((page, pageIndex) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'page-wrap';
+    wrap.style.width = (page.width * PREVIEW_ZOOM) + 'px';
+    wrap.style.height = (page.height * PREVIEW_ZOOM) + 'px';
+
+    const img = document.createElement('img');
+    img.src = 'data:image/png;base64,' + page.image_base64;
+    img.width = page.width * PREVIEW_ZOOM;
+    img.height = page.height * PREVIEW_ZOOM;
+    wrap.appendChild(img);
+
+    blocksData
+      .map((b, idx) => ({ block: b, idx }))
+      .filter(({ block }) => block.page === pageIndex)
+      .forEach(({ block, idx }) => {
+        const [x0, y0, x1, y1] = block.bbox;
+        const box = document.createElement('div');
+        box.className = 'block-box';
+        box.style.left = (x0 * PREVIEW_ZOOM) + 'px';
+        box.style.top = (y0 * PREVIEW_ZOOM) + 'px';
+        box.style.width = ((x1 - x0) * PREVIEW_ZOOM) + 'px';
+        box.style.height = ((y1 - y0) * PREVIEW_ZOOM) + 'px';
+        box.title = block.text;
+        box.dataset.key = `${pageIndex}:${idx}`;
+        box.addEventListener('click', () => onBlockClick(block, idx, box));
+        wrap.appendChild(box);
+      });
+
+    pagesEl.appendChild(wrap);
+  });
+}
+
+function onBlockClick(block, idx, boxEl) {
+  const current = editsByKey[`${block.page}:${idx}`];
+  const defaultValue = current ? current.new_text : block.text;
+  const newText = prompt('編集後のテキストを入力してください:', defaultValue);
+  if (newText === null) return; // キャンセル
+
+  editsByKey[`${block.page}:${idx}`] = {
+    page: block.page,
+    bbox: block.bbox,
+    new_text: newText,
+    font_size: block.font_size,
+  };
+  boxEl.classList.add('edited');
+  boxEl.title = newText;
+
+  downloadBtn.disabled = Object.keys(editsByKey).length === 0;
+  setStatus(`${Object.keys(editsByKey).length}件の編集を保持中。「編集後PDFをダウンロード」を押すと反映されます。`);
+}
+
+downloadBtn.addEventListener('click', async () => {
+  const edits = Object.values(editsByKey);
+  if (edits.length === 0 || !originalFile) {
+    setStatus('編集内容がありません。');
+    return;
+  }
+
+  setStatus('編集を適用中...');
+  const formData = new FormData();
+  formData.append('file', originalFile);
+  formData.append('edits', JSON.stringify(edits));
+
+  try {
+    const res = await fetch('/edit', { method: 'POST', body: formData });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`HTTP ${res.status}: ${err}`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'edited.pdf';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    setStatus('編集後PDFをダウンロードしました。');
+  } catch (e) {
+    setStatus('エラー: ' + e.message);
+  }
+});
+</script>
+</body>
+</html>
