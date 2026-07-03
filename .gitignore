@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# 実APIキー（Bearerトークン）を含むためコミット対象外
+.claude/settings.local.json
