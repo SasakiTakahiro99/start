@@ -4,5 +4,25 @@ __pycache__/
 venv/
 *.egg-info/
 
+# 動作検証用に生成される一時ファイル(誤コミット防止)
+*_test*.pdf
+*_test*.txt
+debug_*
+verify_*
+uvicorn_log*
+uvicorn_final.txt
+uvicorn_import_test*
+extract_blocks_dump.txt
+extract_result.json
+extract_then_edit*
+final_verify.txt
+presubset_check.txt
+tempfile_test_result.txt
+testclient_*
+api3_verify.txt
+direct_call_*
+repeat_test_*
+sample_resume_api_edited*
+
 # 実APIキー（Bearerトークン）を含むためコミット対象外
 .claude/settings.local.json

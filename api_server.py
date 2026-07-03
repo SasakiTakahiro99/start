@@ -11,7 +11,7 @@ import os
 import tempfile
 from json import loads as json_loads
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 import pdf_editor
@@ -41,13 +41,17 @@ def extract(file: UploadFile = File(...)):
 
 
 @app.post("/edit")
-def edit(file: UploadFile = File(...), edits: str = Form(...)):
+def edit(background_tasks: BackgroundTasks, file: UploadFile = File(...), edits: str = Form(...)):
     """アップロードされたPDFに対して複数の編集を適用し、編集後PDFを返す。
 
     Args:
         file: 元PDF(multipart)。
         edits: JSON文字列。例:
             '[{"page": 0, "bbox": [x0,y0,x1,y1], "new_text": "鈴木花子", "font_size": 12}]'
+            "label"を指定すると、bbox全体ではなくラベル部分を除いた値部分だけを
+            書き換える(その場合"text"にbbox元のフルテキストも必須)。例:
+            '[{"page": 0, "bbox": [...], "text": "氏名: 山田太郎",
+               "label": "氏名: ", "new_text": "鈴木花子"}]'
     """
     try:
         edit_list = json_loads(edits)
@@ -72,9 +76,11 @@ def edit(file: UploadFile = File(...), edits: str = Form(...)):
 
     os.remove(input_path)
 
+    background_tasks.add_task(os.remove, output_path)
+
     return FileResponse(
         output_path,
         media_type="application/pdf",
         filename="edited.pdf",
-        background=None,  # TODO: レスポンス送出後にoutput_pathを削除するクリーンアップ処理を追加する。
+        background=background_tasks,
     )

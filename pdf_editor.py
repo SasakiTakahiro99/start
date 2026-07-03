@@ -56,6 +56,35 @@ def extract_text_blocks(pdf_path: str) -> list[dict]:
     return blocks
 
 
+def compute_value_bbox(
+    full_text: str,
+    bbox: list[float],
+    label: str,
+    font: "fitz.Font",
+    font_size: float,
+) -> list[float]:
+    """spanのbboxから、ラベル部分を除いた値部分だけのbboxを計算する。
+
+    full_textがlabelで始まることを前提に、font.text_length()でラベルの
+    描画幅を求め、bboxのx0にその幅を加えたrectを返す(poc_pdf_edit.pyの
+    find_name_value_rect()と同じ考え方)。
+
+    PDF内部ではinsert_text等で描画した半角スペースがNBSP(\xa0)として
+    抽出されることがあるため、startswith判定と幅計算はNFKC正規化後の
+    文字列で行う(labelの文字数さえ合っていれば、実際の描画幅は正規化前の
+    full_text先頭のlabelと同じ文字数分をfont.text_length()に渡せば求まる)。
+    """
+    normalized_full = normalize_text(full_text)
+    normalized_label = normalize_text(label)
+    if not normalized_full.startswith(normalized_label):
+        raise ValueError(f"full_text ({full_text!r}) が label ({label!r}) で始まっていません。")
+
+    label_in_full_text = full_text[: len(normalized_label)]
+    label_width = font.text_length(label_in_full_text, fontsize=font_size)
+    x0, y0, x1, y1 = bbox
+    return [x0 + label_width, y0, x1, y1]
+
+
 def _subset_fonts(doc: "fitz.Document") -> None:
     """出力前にフォントをサブセット化し、埋め込みファイルサイズを削減する。
 
@@ -77,7 +106,10 @@ def edit_pdf(
     Args:
         pdf_path: 編集対象の元PDFパス。
         edits: [{"page": int, "bbox": [x0,y0,x1,y1], "new_text": str,
-                 "font_size": float(省略可、省略時はbboxの高さから推定)}, ...]
+                 "font_size": float(省略可、省略時はbboxの高さから推定),
+                 "label": str(省略可。指定時は"text"も必須で、bboxをラベル分
+                              差し引いた値部分のbboxに補正してから編集する),
+                 "text": str(labelを指定する場合のみ必須。bbox元のフルテキスト)}, ...]
         output_path: 保存先パス。
 
     Returns:
@@ -89,10 +121,17 @@ def edit_pdf(
 
         for edit in edits:
             page = doc[edit["page"]]
-            rect = fitz.Rect(edit["bbox"])
+            bbox = edit["bbox"]
             font_size = edit.get("font_size")
             if font_size is None:
+                rect = fitz.Rect(bbox)
                 font_size = (rect.y1 - rect.y0) * 0.8
+
+            label = edit.get("label")
+            if label is not None:
+                bbox = compute_value_bbox(edit["text"], bbox, label, font, font_size)
+
+            rect = fitz.Rect(bbox)
 
             page.add_redact_annot(rect, fill=(1, 1, 1))
             page.apply_redactions()
