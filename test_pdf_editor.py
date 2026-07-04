@@ -7,6 +7,7 @@
 
 実行方法:
   "C:\\Users\\me\\AppData\\Local\\Programs\\Python\\Python312\\python.exe" test_pdf_editor.py
+  (pytestからも実行可能: python -m pytest test_pdf_editor.py -v)
 """
 
 import contextlib
@@ -14,6 +15,8 @@ import io
 import os
 import sys
 import unicodedata
+
+import pytest
 
 from pdf_editor import extract_text_blocks, replace_text_block
 
@@ -24,6 +27,43 @@ RUN_LOG = os.path.join(BASE_DIR, "test_run_log.txt")
 
 OLD_NAME = "山田太郎"
 NEW_NAME = "鈴木花子"
+
+
+def test_replace_text_block_success(tmp_path):
+    """extract_text_blocks -> replace_text_block -> 再extractで置換結果を検証する(pytest用)。"""
+    if not os.path.exists(SRC_PDF):
+        pytest.skip(f"サンプルPDFが見つかりません: {SRC_PDF}")
+
+    blocks = extract_text_blocks(SRC_PDF)
+    assert len(blocks) > 0
+
+    target_block = None
+    for b in blocks:
+        normalized = unicodedata.normalize("NFKC", b["text"])
+        if OLD_NAME in normalized:
+            target_block = b
+    assert target_block is not None, f"'{OLD_NAME}' を含むブロックが見つかりませんでした。"
+
+    output_pdf = os.path.join(tmp_path, "test_output.pdf")
+    replace_text_block(
+        pdf_path=SRC_PDF,
+        page=target_block["page"],
+        bbox=target_block["bbox"],
+        new_text=NEW_NAME,
+        font_size=target_block["font_size"],
+        output_path=output_pdf,
+    )
+    assert os.path.exists(output_pdf)
+
+    new_blocks = extract_text_blocks(output_pdf)
+    full_text = "".join(b["text"] for b in new_blocks if b["page"] == target_block["page"])
+    normalized_full = unicodedata.normalize("NFKC", full_text)
+
+    has_new = NEW_NAME in normalized_full or ("鈴木" in normalized_full and "花子" in normalized_full)
+    has_old = OLD_NAME in normalized_full
+
+    assert has_new, f"編集後テキストに '{NEW_NAME}' が含まれていません: {normalized_full!r}"
+    assert not has_old, f"編集後テキストに旧テキスト '{OLD_NAME}' が残っています: {normalized_full!r}"
 
 
 def main() -> int:
