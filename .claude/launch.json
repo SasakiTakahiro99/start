@@ -6,6 +6,12 @@
       "runtimeExecutable": "uvicorn",
       "runtimeArgs": ["api_server:app", "--host", "127.0.0.1", "--port", "8000"],
       "port": 8000
+    },
+    {
+      "name": "3d-character-creator",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8001", "--directory", "3d-character-creator"],
+      "port": 8001
     }
   ]
 }

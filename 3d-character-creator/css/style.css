@@ -1,0 +1,140 @@
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif;
+  background: #f4f4f4;
+  color: #222;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+#app-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 20px;
+  background: #2c3e50;
+  color: #fff;
+}
+
+#app-header h1 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+#save-status {
+  font-size: 0.9rem;
+  color: #cdd8e4;
+}
+
+#app-main {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+#canvas-container {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+  background: #000;
+}
+
+#canvas-container canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.webgl-error-message {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #fff;
+  max-width: 80%;
+  text-align: center;
+  font-size: 1rem;
+}
+
+#customization-panel {
+  width: 320px;
+  flex-shrink: 0;
+  padding: 16px;
+  background: #fff;
+  border-left: 1px solid #ddd;
+  overflow-y: auto;
+}
+
+.panel-section {
+  margin-bottom: 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #eee;
+}
+
+.panel-section h3 {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+  color: #2c3e50;
+}
+
+.control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.control-row label {
+  flex: 1;
+  font-size: 0.85rem;
+  color: #444;
+}
+
+.control-row input[type="range"] {
+  flex: 1.4;
+}
+
+.control-row select {
+  flex: 1.4;
+}
+
+.control-row--buttons {
+  justify-content: flex-start;
+  gap: 12px;
+}
+
+.control-row--buttons button {
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  background: #3498db;
+  color: #fff;
+}
+
+.control-row--buttons button:last-child {
+  background: #95a5a6;
+}
+
+#app-footer {
+  padding: 8px 20px;
+  background: #2c3e50;
+  color: #cdd8e4;
+  font-size: 0.85rem;
+}
+
+#app-footer p {
+  margin: 0;
+}
