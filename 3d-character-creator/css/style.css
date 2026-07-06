@@ -105,16 +105,26 @@ body {
   flex: 1.4;
 }
 
+.control-row input[type="text"] {
+  flex: 1.4;
+  padding: 4px 6px;
+  font-size: 0.85rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
 .control-row select {
   flex: 1.4;
 }
 
 .control-row--buttons {
   justify-content: flex-start;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
 .control-row--buttons button {
+  flex: 1;
   padding: 8px 16px;
   font-size: 0.9rem;
   border: none;
@@ -221,4 +231,67 @@ button:disabled {
   border-radius: 4px;
   font-size: 0.85rem;
   margin-bottom: 10px;
+}
+
+.gallery-empty {
+  font-size: 0.8rem;
+  color: #888;
+  margin: 0;
+}
+
+.gallery-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gallery-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #fafafa;
+}
+
+.gallery-item--selected {
+  border-color: #27ae60;
+  background: #eafaf0;
+}
+
+.gallery-item__name {
+  flex: 1;
+  text-align: left;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #2c3e50;
+  padding: 4px;
+}
+
+.gallery-item__name:hover {
+  text-decoration: underline;
+}
+
+.gallery-item__buttons {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.gallery-item__buttons button {
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  background: #3498db;
+  color: #fff;
+}
+
+.gallery-item__buttons button:last-child {
+  background: #e74c3c;
 }

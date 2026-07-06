@@ -7,8 +7,13 @@ import { ENUM_OPTIONS, ENUM_LABELS, validateAppearanceDescription } from './para
  * @param {object} initialParams - GenerationParams
  * @param {{
  *   onGenerate: (params: object) => void,
- *   onSave: () => void,
+ *   onSave: (name: string) => void,
  *   onReset: () => void,
+ *   onSelectGalleryItem: (id: string) => void,
+ *   onDeleteGalleryItem: (id: string) => void,
+ *   onExportCurrent: () => void,
+ *   onExportGalleryItem: (id: string) => void,
+ *   onImportFile: (file: File) => void,
  * }} handlers
  * @returns {{
  *   refreshUI: (params: object) => void,
@@ -18,6 +23,7 @@ import { ENUM_OPTIONS, ENUM_LABELS, validateAppearanceDescription } from './para
  *   showGenerationNotice: (message: string) => void,
  *   clearGenerationNotice: () => void,
  *   setSaveButtonEnabled: (enabled: boolean) => void,
+ *   refreshGallery: (entries: Array<object>, selectedId: string|null) => void,
  * }}
  */
 export function setupCustomizationUI(containerEl, initialParams, handlers) {
@@ -158,14 +164,27 @@ export function setupCustomizationUI(containerEl, initialParams, handlers) {
 
   // 操作（保存/リセット）
   const actionSection = createSection('操作');
+
+  const saveNameRow = document.createElement('div');
+  saveNameRow.className = 'control-row';
+  const saveNameLabel = document.createElement('label');
+  saveNameLabel.textContent = '保存名';
+  const saveNameInput = document.createElement('input');
+  saveNameInput.type = 'text';
+  saveNameInput.placeholder = '例: キャラクター1';
+  saveNameInput.maxLength = 50;
+  saveNameRow.appendChild(saveNameLabel);
+  saveNameRow.appendChild(saveNameInput);
+  actionSection.appendChild(saveNameRow);
+
   const buttonRow = document.createElement('div');
   buttonRow.className = 'control-row control-row--buttons';
 
   const saveButton = document.createElement('button');
   saveButton.type = 'button';
-  saveButton.textContent = '保存';
+  saveButton.textContent = '保存（一覧に追加）';
   saveButton.disabled = true;
-  saveButton.addEventListener('click', () => handlers.onSave());
+  saveButton.addEventListener('click', () => handlers.onSave(saveNameInput.value.trim()));
 
   const resetButton = document.createElement('button');
   resetButton.type = 'button';
@@ -175,6 +194,87 @@ export function setupCustomizationUI(containerEl, initialParams, handlers) {
   buttonRow.appendChild(saveButton);
   buttonRow.appendChild(resetButton);
   actionSection.appendChild(buttonRow);
+
+  // ファイルへのエクスポート/インポート
+  const fileRow = document.createElement('div');
+  fileRow.className = 'control-row control-row--buttons';
+
+  const exportButton = document.createElement('button');
+  exportButton.type = 'button';
+  exportButton.textContent = '現在のキャラをファイル保存';
+  exportButton.disabled = true;
+  exportButton.addEventListener('click', () => handlers.onExportCurrent());
+
+  const importInput = document.createElement('input');
+  importInput.type = 'file';
+  importInput.accept = '.zip';
+  importInput.style.display = 'none';
+  importInput.addEventListener('change', () => {
+    const file = importInput.files && importInput.files[0];
+    if (file) {
+      handlers.onImportFile(file);
+    }
+    importInput.value = '';
+  });
+
+  const importButton = document.createElement('button');
+  importButton.type = 'button';
+  importButton.textContent = 'ファイルから読み込み';
+  importButton.addEventListener('click', () => importInput.click());
+
+  fileRow.appendChild(exportButton);
+  fileRow.appendChild(importButton);
+  actionSection.appendChild(fileRow);
+  actionSection.appendChild(importInput);
+
+  // 保存済みキャラクター一覧（ギャラリー）
+  const gallerySection = createSection('保存済みキャラクター一覧');
+  const galleryListEl = document.createElement('div');
+  galleryListEl.className = 'gallery-list';
+  gallerySection.appendChild(galleryListEl);
+
+  function renderGallery(entries, selectedId) {
+    galleryListEl.innerHTML = '';
+    if (!entries || entries.length === 0) {
+      const emptyEl = document.createElement('p');
+      emptyEl.className = 'gallery-empty';
+      emptyEl.textContent = 'まだ保存されたキャラクターはありません。';
+      galleryListEl.appendChild(emptyEl);
+      return;
+    }
+
+    for (const entry of entries) {
+      const item = document.createElement('div');
+      item.className = 'gallery-item';
+      if (entry.id === selectedId) item.classList.add('gallery-item--selected');
+
+      const nameButton = document.createElement('button');
+      nameButton.type = 'button';
+      nameButton.className = 'gallery-item__name';
+      nameButton.textContent = entry.name;
+      nameButton.addEventListener('click', () => handlers.onSelectGalleryItem(entry.id));
+
+      const itemButtonRow = document.createElement('div');
+      itemButtonRow.className = 'gallery-item__buttons';
+
+      const itemExportButton = document.createElement('button');
+      itemExportButton.type = 'button';
+      itemExportButton.textContent = 'エクスポート';
+      itemExportButton.addEventListener('click', () => handlers.onExportGalleryItem(entry.id));
+
+      const itemDeleteButton = document.createElement('button');
+      itemDeleteButton.type = 'button';
+      itemDeleteButton.textContent = '削除';
+      itemDeleteButton.addEventListener('click', () => handlers.onDeleteGalleryItem(entry.id));
+
+      itemButtonRow.appendChild(itemExportButton);
+      itemButtonRow.appendChild(itemDeleteButton);
+
+      item.appendChild(nameButton);
+      item.appendChild(itemButtonRow);
+      galleryListEl.appendChild(item);
+    }
+  }
 
   function refreshUI(newParams) {
     formParams = { ...newParams };
@@ -215,6 +315,7 @@ export function setupCustomizationUI(containerEl, initialParams, handlers) {
 
   function setSaveButtonEnabled(enabled) {
     saveButton.disabled = !enabled;
+    exportButton.disabled = !enabled;
   }
 
   return {
@@ -225,5 +326,6 @@ export function setupCustomizationUI(containerEl, initialParams, handlers) {
     showGenerationNotice,
     clearGenerationNotice,
     setSaveButtonEnabled,
+    refreshGallery: renderGallery,
   };
 }

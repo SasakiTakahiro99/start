@@ -1,11 +1,19 @@
 // js/main.js
 import * as THREE from 'three';
 import { createField } from './field.js';
-import { createCharacterContainer, loadCharacterModel, disposeCurrentModel, showPlaceholder } from './character.js';
+import {
+  createCharacterContainer,
+  loadCharacterModel,
+  disposeCurrentModel,
+  showPlaceholder,
+  arrayBufferToBase64,
+  createObjectUrlFromBase64,
+} from './character.js';
 import { setupControls } from './controls.js';
 import { setupCustomizationUI } from './customization-ui.js';
-import { saveToStorage, loadFromStorage, clearStorage } from './storage.js';
+import { saveToStorage, loadFromStorage, clearStorage, loadGallery, addToGallery, removeFromGallery } from './storage.js';
 import { createDefaultParams, buildPrompt } from './params.js';
+import { exportCharacterToFile, importCharacterFromFile } from './character-file.js';
 
 const PROXY_BASE_URL = 'http://localhost:3001';
 const POLL_INTERVAL_MS = 2000;
@@ -18,6 +26,21 @@ let currentParams = createDefaultParams();
 let currentGeneratedModel = null;
 let uiHandle = null;
 let controlsHandle = null;
+let gallery = [];
+let selectedGalleryId = null;
+// ギャラリー表示用にその場で発行したobject URL（Base64→Blobから再生成したもの）。
+// 永続化はしない一時URLのため、差し替え・別キャラ選択のたびに解放する。
+let currentDisplayObjectUrl = null;
+
+/**
+ * ギャラリー表示用に発行済みのobject URLを解放する。
+ */
+function revokeCurrentDisplayObjectUrl() {
+  if (currentDisplayObjectUrl) {
+    URL.revokeObjectURL(currentDisplayObjectUrl);
+    currentDisplayObjectUrl = null;
+  }
+}
 
 /** WebGLがこの環境で利用可能か判定する。 */
 function isWebGLAvailable() {
@@ -152,16 +175,157 @@ function pollJobStatus(jobId, sourceParams) {
   });
 }
 
-function handleSave() {
-  const result = saveToStorage({ params: currentParams, generatedModel: currentGeneratedModel });
+function refreshGalleryUI() {
+  gallery = loadGallery();
+  uiHandle.refreshGallery(gallery, selectedGalleryId);
+}
+
+/**
+ * GLBモデルの実体データをBase64文字列として取得する。
+ * 既にBase64を保持している場合(インポート由来・ギャラリーから読み込み済みの場合)はそれを再利用し、
+ * 生成直後などまだ持っていない場合はmodelUrlから改めてfetchする。
+ * @param {object} generatedModel
+ * @returns {Promise<string>} Base64文字列
+ */
+async function ensureModelGlbBase64(generatedModel) {
+  if (generatedModel.modelGlbBase64) {
+    return generatedModel.modelGlbBase64;
+  }
+  const res = await fetch(generatedModel.modelUrl);
+  if (!res.ok) {
+    throw new Error('モデルデータの取得に失敗しました。');
+  }
+  const buffer = await res.arrayBuffer();
+  return arrayBufferToBase64(buffer);
+}
+
+async function handleSave(inputName) {
+  if (!currentGeneratedModel) return;
+
+  const name = inputName && inputName.length > 0 ? inputName : `キャラクター${gallery.length + 1}`;
+
+  let modelGlbBase64;
+  try {
+    modelGlbBase64 = await ensureModelGlbBase64(currentGeneratedModel);
+  } catch {
+    setSaveStatus('保存に失敗しました（モデルデータの取得に失敗しました）');
+    return;
+  }
+
+  currentGeneratedModel = { ...currentGeneratedModel, modelGlbBase64 };
+  // 下書き状態としてもキャッシュしておく（ページ再読み込み時の作業状態復元用）
+  saveToStorage({ params: currentParams, generatedModel: currentGeneratedModel });
+
+  const result = addToGallery({ name, params: currentParams, generatedModel: currentGeneratedModel });
   if (result.ok) {
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, '0');
-    const mm = String(now.getMinutes()).padStart(2, '0');
-    const ss = String(now.getSeconds()).padStart(2, '0');
-    setSaveStatus(`保存しました（${hh}:${mm}:${ss}）`);
+    selectedGalleryId = result.entry.id;
+    refreshGalleryUI();
+    setSaveStatus(`「${name}」として一覧に保存しました`);
   } else {
     setSaveStatus('保存に失敗しました（ブラウザのストレージ設定をご確認ください）');
+  }
+}
+
+async function handleSelectGalleryItem(id) {
+  const entry = gallery.find((item) => item.id === id);
+  if (!entry || !entry.generatedModel || !entry.generatedModel.modelGlbBase64) return;
+
+  uiHandle.clearError();
+  uiHandle.setGeneratingState(true, 'モデルを読み込んでいます…');
+  const objectUrl = createObjectUrlFromBase64(entry.generatedModel.modelGlbBase64);
+  try {
+    await loadCharacterModel(character, objectUrl);
+    revokeCurrentDisplayObjectUrl();
+    currentDisplayObjectUrl = objectUrl;
+    currentParams = entry.params;
+    currentGeneratedModel = { ...entry.generatedModel, modelUrl: objectUrl };
+    selectedGalleryId = entry.id;
+    uiHandle.refreshUI(currentParams);
+    uiHandle.setSaveButtonEnabled(true);
+    uiHandle.setGeneratingState(false);
+    refreshGalleryUI();
+    setSaveStatus(`「${entry.name}」を表示しています`);
+  } catch {
+    URL.revokeObjectURL(objectUrl);
+    uiHandle.setGeneratingState(false);
+    uiHandle.showError('このキャラクターのモデル読み込みに失敗しました（データが失効している可能性があります）。');
+  }
+}
+
+function handleDeleteGalleryItem(id) {
+  const entry = gallery.find((item) => item.id === id);
+  const confirmed = window.confirm(`「${entry ? entry.name : 'このキャラクター'}」を一覧から削除します。よろしいですか？`);
+  if (!confirmed) return;
+
+  removeFromGallery(id);
+  if (selectedGalleryId === id) selectedGalleryId = null;
+  refreshGalleryUI();
+}
+
+async function handleExportCurrent() {
+  if (!currentGeneratedModel) return;
+  try {
+    await exportCharacterToFile({
+      params: currentParams,
+      modelUrl: currentGeneratedModel.modelUrl,
+      modelGlbBase64: currentGeneratedModel.modelGlbBase64,
+      fileName: 'character.zip',
+    });
+  } catch (err) {
+    uiHandle.showError(err.message || 'ファイルのエクスポートに失敗しました。');
+  }
+}
+
+async function handleExportGalleryItem(id) {
+  const entry = gallery.find((item) => item.id === id);
+  if (!entry || !entry.generatedModel) return;
+  try {
+    await exportCharacterToFile({
+      params: entry.params,
+      modelUrl: entry.generatedModel.modelUrl,
+      modelGlbBase64: entry.generatedModel.modelGlbBase64,
+      fileName: `${entry.name}.zip`,
+    });
+  } catch (err) {
+    uiHandle.showError(err.message || 'ファイルのエクスポートに失敗しました。');
+  }
+}
+
+async function handleImportFile(file) {
+  uiHandle.clearError();
+  uiHandle.setGeneratingState(true, 'ファイルを読み込んでいます…');
+  try {
+    const { params, modelGlbBase64 } = await importCharacterFromFile(file);
+    const displayUrl = createObjectUrlFromBase64(modelGlbBase64);
+    await loadCharacterModel(character, displayUrl);
+    revokeCurrentDisplayObjectUrl();
+    currentDisplayObjectUrl = displayUrl;
+
+    const generatedModel = {
+      modelId: null,
+      modelUrl: displayUrl,
+      modelGlbBase64,
+      generatedAt: new Date().toISOString(),
+      sourceParams: params,
+    };
+    currentParams = params;
+    currentGeneratedModel = generatedModel;
+    uiHandle.refreshUI(currentParams);
+    uiHandle.setSaveButtonEnabled(true);
+    uiHandle.setGeneratingState(false);
+
+    const name = file.name ? file.name.replace(/\.zip$/i, '') : `キャラクター${gallery.length + 1}`;
+    const result = addToGallery({ name, params, generatedModel });
+    if (result.ok) {
+      selectedGalleryId = result.entry.id;
+      refreshGalleryUI();
+      setSaveStatus(`「${name}」をインポートし、一覧に保存しました`);
+    } else {
+      setSaveStatus('保存に失敗しました（ブラウザのストレージ設定をご確認ください）');
+    }
+  } catch (err) {
+    uiHandle.setGeneratingState(false);
+    uiHandle.showError(err.message || 'ファイルのインポートに失敗しました。');
   }
 }
 
@@ -171,6 +335,7 @@ function handleReset() {
 
   disposeCurrentModel(character);
   showPlaceholder(character);
+  revokeCurrentDisplayObjectUrl();
   currentParams = createDefaultParams();
   currentGeneratedModel = null;
   uiHandle.clearGenerationNotice();
@@ -223,23 +388,38 @@ function init() {
 
   uiHandle = setupCustomizationUI(panelEl, currentParams, {
     onGenerate: (formParams) => handleGenerate(formParams),
-    onSave: () => handleSave(),
+    onSave: (name) => handleSave(name),
     onReset: () => handleReset(),
+    onSelectGalleryItem: (id) => handleSelectGalleryItem(id),
+    onDeleteGalleryItem: (id) => handleDeleteGalleryItem(id),
+    onExportCurrent: () => handleExportCurrent(),
+    onExportGalleryItem: (id) => handleExportGalleryItem(id),
+    onImportFile: (file) => handleImportFile(file),
   });
 
-  if (currentGeneratedModel) {
+  refreshGalleryUI();
+
+  if (currentGeneratedModel && currentGeneratedModel.modelGlbBase64) {
+    // Base64実体を持っている場合のみ復元する。modelUrlは一時URL(blob URL等)の可能性があり
+    // ページ再読み込み後は失効しているため、それ単体では復元しない。
     uiHandle.setGeneratingState(true, 'モデルを読み込んでいます…');
-    loadCharacterModel(character, currentGeneratedModel.modelUrl)
+    const displayUrl = createObjectUrlFromBase64(currentGeneratedModel.modelGlbBase64);
+    loadCharacterModel(character, displayUrl)
       .then(() => {
+        revokeCurrentDisplayObjectUrl();
+        currentDisplayObjectUrl = displayUrl;
+        currentGeneratedModel = { ...currentGeneratedModel, modelUrl: displayUrl };
         uiHandle.setGeneratingState(false);
         uiHandle.setSaveButtonEnabled(true);
       })
       .catch(() => {
+        URL.revokeObjectURL(displayUrl);
         uiHandle.setGeneratingState(false);
         uiHandle.showError('保存済みモデルの読み込みに失敗しました。再度生成してください。');
       });
   } else {
     showPlaceholder(character);
+    currentGeneratedModel = null;
     uiHandle.setSaveButtonEnabled(false);
   }
 

@@ -4,11 +4,53 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-const MESHY_MODEL_FRONT_CORRECTION_Y = 0; // 8.2節。ラジアン。初期値は無補正
+// 8.2節。ラジアン。Tripo AI生成GLBの正面がローカル+X方向(アプリの想定は+Z)だったため、
+// 実機確認(生成→表示、真横向きを確認)の結果+90度で補正する。
+const MESHY_MODEL_FRONT_CORRECTION_Y = Math.PI / 2;
 const MODEL_TARGET_HEIGHT = 1.7; // モデルの高さをこの値(m相当)へ正規化する目標値
 const GLB_LOAD_TIMEOUT_MS = 30000;
 
 const loader = new GLTFLoader();
+
+/**
+ * ArrayBufferをBase64文字列へ変換する(localStorage永続化用)。
+ * @param {ArrayBuffer} buffer
+ * @returns {string}
+ */
+export function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const CHUNK_SIZE = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK_SIZE));
+  }
+  return btoa(binary);
+}
+
+/**
+ * Base64文字列をArrayBufferへ変換する。
+ * @param {string} base64
+ * @returns {ArrayBuffer}
+ */
+export function base64ToArrayBuffer(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+/**
+ * Base64文字列からGLB用のobject URLをその場で生成する。
+ * 呼び出し側は不要になったタイミングで必ずURL.revokeObjectURLで解放すること。
+ * @param {string} base64
+ * @returns {string}
+ */
+export function createObjectUrlFromBase64(base64) {
+  const blob = new Blob([base64ToArrayBuffer(base64)], { type: 'model/gltf-binary' });
+  return URL.createObjectURL(blob);
+}
 
 /**
  * character.root（常に単一インスタンス）とローディング/未生成表示の管理ハンドルを構築する。
