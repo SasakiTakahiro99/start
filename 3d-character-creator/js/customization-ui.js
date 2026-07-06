@@ -1,39 +1,27 @@
 // js/customization-ui.js
-import { PARAM_RANGES, ENUM_OPTIONS } from './params.js';
-
-const ENUM_LABELS = {
-  gender: { female: '女性', male: '男性' },
-  'face.shape': { round: '丸顔', oval: '卵型', square: '角型' },
-  'face.nose.shape': { normal: '標準', small: '小さめ', wide: '幅広' },
-  'face.mouth.shape': { normal: '標準', smile: '笑顔', flat: '真顔' },
-  'hair.style': { short: 'ショート', long: 'ロング', bald: 'なし' },
-};
-
-function getByPath(obj, path) {
-  return path.split('.').reduce((acc, key) => (acc == null ? undefined : acc[key]), obj);
-}
-
-function setByPath(obj, path, value) {
-  const keys = path.split('.');
-  let target = obj;
-  for (let i = 0; i < keys.length - 1; i++) {
-    target = target[keys[i]];
-  }
-  target[keys[keys.length - 1]] = value;
-}
+import { ENUM_OPTIONS, ENUM_LABELS, validateAppearanceDescription } from './params.js';
 
 /**
  * カスタマイズパネルのDOMを構築し、イベントをバインドする。
  * @param {HTMLElement} containerEl
- * @param {object} initialParams
- * @param {(newParams: object, changedPath: string) => void} onChange
- * @param {() => void} onSave
- * @param {() => void} onReset
- * @returns {{ refreshUI: (params: object) => void }}
+ * @param {object} initialParams - GenerationParams
+ * @param {{
+ *   onGenerate: (params: object) => void,
+ *   onSave: () => void,
+ *   onReset: () => void,
+ * }} handlers
+ * @returns {{
+ *   refreshUI: (params: object) => void,
+ *   setGeneratingState: (isGenerating: boolean, progressText?: string) => void,
+ *   showError: (message: string) => void,
+ *   clearError: () => void,
+ *   showGenerationNotice: (message: string) => void,
+ *   clearGenerationNotice: () => void,
+ *   setSaveButtonEnabled: (enabled: boolean) => void,
+ * }}
  */
-export function setupCustomizationUI(containerEl, initialParams, onChange, onSave, onReset) {
-  let params = initialParams;
-  const inputRefs = {};
+export function setupCustomizationUI(containerEl, initialParams, handlers) {
+  let formParams = { ...initialParams };
 
   containerEl.innerHTML = '';
 
@@ -47,59 +35,9 @@ export function setupCustomizationUI(containerEl, initialParams, onChange, onSav
     return section;
   }
 
-  function createSliderRow(section, labelText, path) {
-    const range = PARAM_RANGES[path];
-    const row = document.createElement('div');
-    row.className = 'control-row';
-
-    const label = document.createElement('label');
-    label.textContent = labelText;
-
-    const input = document.createElement('input');
-    input.type = 'range';
-    input.min = String(range.min);
-    input.max = String(range.max);
-    input.step = String(range.step);
-    input.value = String(getByPath(params, path));
-
-    input.addEventListener('input', () => {
-      setByPath(params, path, Number(input.value));
-      onChange(params, path);
-    });
-
-    row.appendChild(label);
-    row.appendChild(input);
-    section.appendChild(row);
-    inputRefs[path] = input;
-    return input;
-  }
-
-  function createColorRow(section, labelText, path) {
-    const row = document.createElement('div');
-    row.className = 'control-row';
-
-    const label = document.createElement('label');
-    label.textContent = labelText;
-
-    const input = document.createElement('input');
-    input.type = 'color';
-    input.value = getByPath(params, path);
-
-    input.addEventListener('input', () => {
-      setByPath(params, path, input.value);
-      onChange(params, path);
-    });
-
-    row.appendChild(label);
-    row.appendChild(input);
-    section.appendChild(row);
-    inputRefs[path] = input;
-    return input;
-  }
-
-  function createSelectRow(section, labelText, path) {
-    const options = ENUM_OPTIONS[path];
-    const labels = ENUM_LABELS[path] || {};
+  function createSelectRow(section, labelText, key) {
+    const options = ENUM_OPTIONS[key];
+    const labels = ENUM_LABELS[key] || {};
     const row = document.createElement('div');
     row.className = 'control-row';
 
@@ -113,60 +51,112 @@ export function setupCustomizationUI(containerEl, initialParams, onChange, onSav
       optionEl.textContent = labels[option] || option;
       select.appendChild(optionEl);
     }
-    select.value = getByPath(params, path);
+    select.value = formParams[key];
 
     select.addEventListener('change', () => {
-      setByPath(params, path, select.value);
-      onChange(params, path);
+      formParams[key] = select.value;
     });
 
     row.appendChild(label);
     row.appendChild(select);
     section.appendChild(row);
-    inputRefs[path] = select;
     return select;
   }
 
   // 性別
   const genderSection = createSection('性別');
-  createSelectRow(genderSection, '性別', 'gender');
+  const genderSelect = createSelectRow(genderSection, '性別', 'gender');
 
-  // 体形
-  const bodySection = createSection('体形');
-  createSliderRow(bodySection, '身長', 'body.height');
-  createSliderRow(bodySection, '肩幅', 'body.shoulderWidth');
-  createSliderRow(bodySection, '体重感', 'body.weight');
+  // 雰囲気
+  const moodSection = createSection('雰囲気');
+  const moodSelect = createSelectRow(moodSection, '雰囲気', 'mood');
 
-  // 肌の色
-  const skinSection = createSection('肌の色');
-  createColorRow(skinSection, '肌の色', 'skinColor');
+  // 体型傾向
+  const bodyTypeSection = createSection('体型傾向');
+  const bodyTypeSelect = createSelectRow(bodyTypeSection, '体型傾向', 'bodyType');
 
-  // 目
-  const eyesSection = createSection('目');
-  createSliderRow(eyesSection, '大きさ', 'face.eyes.size');
-  createSliderRow(eyesSection, '間隔', 'face.eyes.spacing');
-  createColorRow(eyesSection, '色', 'face.eyes.color');
+  // 容姿の説明
+  const appearanceSection = createSection('容姿の説明');
+  const appearanceRow = document.createElement('div');
+  appearanceRow.className = 'control-row control-row--textarea';
 
-  // 鼻
-  const noseSection = createSection('鼻');
-  createSliderRow(noseSection, '大きさ', 'face.nose.size');
-  createSelectRow(noseSection, '形', 'face.nose.shape');
+  const appearanceTextarea = document.createElement('textarea');
+  appearanceTextarea.id = 'appearance-description';
+  appearanceTextarea.maxLength = 500;
+  appearanceTextarea.value = formParams.appearanceDescription;
+  appearanceTextarea.placeholder = '例: 黒髪ロング、優しい笑顔、ナチュラルメイク';
 
-  // 口
-  const mouthSection = createSection('口');
-  createSliderRow(mouthSection, '大きさ', 'face.mouth.size');
-  createSelectRow(mouthSection, '形', 'face.mouth.shape');
+  const charCounter = document.createElement('span');
+  charCounter.className = 'char-counter';
+  function updateCharCounter() {
+    charCounter.textContent = `${appearanceTextarea.value.length} / 500`;
+  }
+  updateCharCounter();
 
-  // 輪郭
-  const shapeSection = createSection('輪郭');
-  createSelectRow(shapeSection, '顔の形', 'face.shape');
+  appearanceTextarea.addEventListener('input', () => {
+    formParams.appearanceDescription = appearanceTextarea.value;
+    updateCharCounter();
+    const result = validateAppearanceDescription(appearanceTextarea.value);
+    if (!result.ok) {
+      showError(result.message);
+    } else {
+      clearError();
+    }
+  });
 
-  // 髪
-  const hairSection = createSection('髪');
-  createSelectRow(hairSection, '髪型', 'hair.style');
-  createColorRow(hairSection, '髪色', 'hair.color');
+  appearanceRow.appendChild(appearanceTextarea);
+  appearanceRow.appendChild(charCounter);
+  appearanceSection.appendChild(appearanceRow);
 
-  // 操作
+  // 生成ボタン
+  const generateSection = createSection('生成');
+  const generateButton = document.createElement('button');
+  generateButton.type = 'button';
+  generateButton.className = 'generate-button';
+  generateButton.textContent = '生成';
+  generateButton.addEventListener('click', () => {
+    const currentParams = {
+      version: 2,
+      gender: genderSelect.value,
+      mood: moodSelect.value,
+      bodyType: bodyTypeSelect.value,
+      appearanceDescription: appearanceTextarea.value,
+    };
+    const validation = validateAppearanceDescription(currentParams.appearanceDescription);
+    if (!validation.ok) {
+      showError(validation.message);
+      return;
+    }
+    formParams = currentParams;
+    handlers.onGenerate(currentParams);
+  });
+  generateSection.appendChild(generateButton);
+
+  // ローディング表示
+  const loadingIndicator = document.createElement('div');
+  loadingIndicator.className = 'loading-indicator';
+  loadingIndicator.hidden = true;
+  const spinner = document.createElement('span');
+  spinner.className = 'spinner';
+  const progressText = document.createElement('span');
+  progressText.className = 'progress-text';
+  loadingIndicator.appendChild(spinner);
+  loadingIndicator.appendChild(progressText);
+  generateSection.appendChild(loadingIndicator);
+
+  // エラー表示
+  const errorEl = document.createElement('div');
+  errorEl.className = 'generation-error';
+  errorEl.hidden = true;
+  generateSection.appendChild(errorEl);
+
+  // デモ注記表示
+  const noticeEl = document.createElement('div');
+  noticeEl.className = 'generation-notice';
+  noticeEl.hidden = true;
+  generateSection.appendChild(noticeEl);
+
+  // 操作（保存/リセット）
   const actionSection = createSection('操作');
   const buttonRow = document.createElement('div');
   buttonRow.className = 'control-row control-row--buttons';
@@ -174,25 +164,66 @@ export function setupCustomizationUI(containerEl, initialParams, onChange, onSav
   const saveButton = document.createElement('button');
   saveButton.type = 'button';
   saveButton.textContent = '保存';
-  saveButton.addEventListener('click', () => onSave());
+  saveButton.disabled = true;
+  saveButton.addEventListener('click', () => handlers.onSave());
 
   const resetButton = document.createElement('button');
   resetButton.type = 'button';
   resetButton.textContent = 'リセット';
-  resetButton.addEventListener('click', () => onReset());
+  resetButton.addEventListener('click', () => handlers.onReset());
 
   buttonRow.appendChild(saveButton);
   buttonRow.appendChild(resetButton);
   actionSection.appendChild(buttonRow);
 
   function refreshUI(newParams) {
-    params = newParams;
-    for (const path of Object.keys(inputRefs)) {
-      const input = inputRefs[path];
-      const value = getByPath(params, path);
-      input.value = value;
+    formParams = { ...newParams };
+    genderSelect.value = formParams.gender;
+    moodSelect.value = formParams.mood;
+    bodyTypeSelect.value = formParams.bodyType;
+    appearanceTextarea.value = formParams.appearanceDescription;
+    updateCharCounter();
+  }
+
+  function setGeneratingState(isGenerating, progressTextValue) {
+    generateButton.disabled = isGenerating;
+    loadingIndicator.hidden = !isGenerating;
+    if (isGenerating) {
+      progressText.textContent = progressTextValue || '生成中…';
     }
   }
 
-  return { refreshUI };
+  function showError(message) {
+    errorEl.textContent = message;
+    errorEl.hidden = false;
+  }
+
+  function clearError() {
+    errorEl.textContent = '';
+    errorEl.hidden = true;
+  }
+
+  function showGenerationNotice(message) {
+    noticeEl.textContent = message;
+    noticeEl.hidden = false;
+  }
+
+  function clearGenerationNotice() {
+    noticeEl.textContent = '';
+    noticeEl.hidden = true;
+  }
+
+  function setSaveButtonEnabled(enabled) {
+    saveButton.disabled = !enabled;
+  }
+
+  return {
+    refreshUI,
+    setGeneratingState,
+    showError,
+    clearError,
+    showGenerationNotice,
+    clearGenerationNotice,
+    setSaveButtonEnabled,
+  };
 }
