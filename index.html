@@ -4,10 +4,179 @@
 <meta charset="UTF-8">
 <title>履歴書PDF部分編集MVP</title>
 <style>
-  body { font-family: sans-serif; margin: 20px; }
-  #pages { margin-top: 20px; }
-  .page-wrap { position: relative; display: inline-block; margin-bottom: 20px; border: 1px solid #ccc; }
-  .page-wrap img { display: block; }
+  :root {
+    --color-bg: #f4f6f9;
+    --color-surface: #ffffff;
+    --color-border: #e0e4ea;
+    --color-primary: #3b6fe0;
+    --color-primary-hover: #2f5bc4;
+    --color-text: #232a35;
+    --color-text-muted: #6b7280;
+    --color-accent-green: #1e8e5a;
+    --color-accent-green-bg: rgba(30, 142, 90, 0.12);
+    --color-accent-red: #d64545;
+    --color-accent-red-bg: rgba(214, 69, 69, 0.08);
+    --radius: 10px;
+    --shadow-card: 0 2px 10px rgba(20, 30, 60, 0.06);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif;
+    margin: 0;
+    padding: 24px;
+    background: var(--color-bg);
+    color: var(--color-text);
+  }
+
+  .app-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .app-header h1 {
+    font-size: 20px;
+    margin: 0;
+  }
+
+  #editedBadge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--color-accent-green-bg);
+    color: var(--color-accent-green);
+    border: 1px solid var(--color-accent-green);
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+    padding: 16px 20px;
+    margin-bottom: 20px;
+  }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  #fileName {
+    font-size: 13px;
+    color: var(--color-text-muted);
+    margin-left: 4px;
+  }
+
+  #dropZone {
+    border: 2px dashed var(--color-border);
+    border-radius: var(--radius);
+    padding: 24px;
+    text-align: center;
+    color: var(--color-text-muted);
+    font-size: 14px;
+    margin-top: 14px;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  #dropZone.drag-over {
+    background: var(--color-accent-green-bg);
+    border-color: var(--color-accent-green);
+    color: var(--color-accent-green);
+  }
+
+  button {
+    font-family: inherit;
+    font-size: 14px;
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text);
+    cursor: pointer;
+    transition: background 0.15s, box-shadow 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  button:hover:not(:disabled) { background: #eef1f6; }
+
+  button.primary {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #fff;
+  }
+  button.primary:hover:not(:disabled) { background: var(--color-primary-hover); }
+
+  button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    border-top-color: #fff;
+    border-radius: 50%;
+    display: none;
+    animation: spin 0.7s linear infinite;
+  }
+  button:not(.primary) .spinner {
+    border: 2px solid rgba(59, 111, 224, 0.25);
+    border-top-color: var(--color-primary);
+  }
+  button.loading .spinner { display: inline-block; }
+  button.loading .btn-label { opacity: 0.8; }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  #status {
+    margin-top: 4px;
+    color: var(--color-text-muted);
+    white-space: pre-wrap;
+    font-size: 13px;
+    min-height: 18px;
+  }
+
+  #pagesContainer {
+    max-width: 100%;
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+
+  #pages {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .page-wrap {
+    position: relative;
+    display: inline-block;
+    margin-bottom: 20px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+    max-width: 100%;
+  }
+  .page-wrap img { display: block; width: 100%; height: auto; }
+
   .block-box {
     position: absolute;
     border: 1px solid rgba(255, 0, 0, 0.6);
@@ -17,7 +186,6 @@
   }
   .block-box:hover { background: rgba(255, 0, 0, 0.25); }
   .block-box.edited { border-color: rgba(0, 128, 0, 0.8); background: rgba(0, 128, 0, 0.15); }
-  #status { margin-top: 10px; color: #333; white-space: pre-wrap; }
 
   #editModalOverlay {
     display: none;
@@ -30,14 +198,15 @@
   }
   #editModalOverlay.open { display: flex; }
   #editModal {
-    background: #fff;
-    border-radius: 6px;
+    background: var(--color-surface);
+    border-radius: var(--radius);
     padding: 16px 20px;
     width: 420px;
     max-width: 90vw;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   }
-  #editModal h2 { margin: 0 0 10px; font-size: 16px; }
+  #editModal h2 { margin: 0 0 6px; font-size: 16px; }
+  #editModalHint { margin: 0 0 10px; font-size: 12px; color: var(--color-text-muted); }
   #editModalTextarea {
     width: 100%;
     box-sizing: border-box;
@@ -46,6 +215,8 @@
     font-family: inherit;
     resize: vertical;
     padding: 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
   }
   #editModalButtons {
     margin-top: 12px;
@@ -56,22 +227,41 @@
 </style>
 </head>
 <body>
-  <h1>履歴書PDF部分編集MVP</h1>
+  <div class="app-header">
+    <h1>履歴書PDF部分編集MVP</h1>
+    <span id="editedBadge">編集 0件</span>
+  </div>
 
-  <input type="file" id="fileInput" accept="application/pdf">
-  <button id="uploadBtn">アップロードして解析</button>
-  <button id="downloadBtn" disabled>編集後PDFをダウンロード</button>
+  <div class="card">
+    <div class="toolbar">
+      <input type="file" id="fileInput" accept="application/pdf">
+      <button id="uploadBtn" class="primary" type="button">
+        <span class="spinner"></span><span class="btn-label">アップロードして解析</span>
+      </button>
+      <button id="downloadBtn" type="button" disabled>
+        <span class="spinner"></span><span class="btn-label">編集後PDFをダウンロード</span>
+      </button>
+      <button id="resetBtn" type="button">やり直す</button>
+      <span id="fileName"></span>
+    </div>
 
-  <div id="status"></div>
-  <div id="pages"></div>
+    <div id="dropZone">ここにPDFファイルをドラッグ&ドロップしてもアップロードできます</div>
+
+    <div id="status"></div>
+  </div>
+
+  <div id="pagesContainer">
+    <div id="pages"></div>
+  </div>
 
   <div id="editModalOverlay">
     <div id="editModal">
       <h2>編集後のテキストを入力してください</h2>
+      <p id="editModalHint">Ctrl+Enter (Macは⌘+Enter) で保存 / Escでキャンセル</p>
       <textarea id="editModalTextarea"></textarea>
       <div id="editModalButtons">
-        <button id="editModalCancel">キャンセル</button>
-        <button id="editModalSave">保存</button>
+        <button id="editModalCancel" type="button">キャンセル</button>
+        <button id="editModalSave" class="primary" type="button">保存</button>
       </div>
     </div>
   </div>
@@ -87,23 +277,43 @@ const editsByKey = {};     // "page:index" -> edit指定オブジェクト
 const fileInput = document.getElementById('fileInput');
 const uploadBtn = document.getElementById('uploadBtn');
 const downloadBtn = document.getElementById('downloadBtn');
+const resetBtn = document.getElementById('resetBtn');
 const statusEl = document.getElementById('status');
 const pagesEl = document.getElementById('pages');
+const fileNameEl = document.getElementById('fileName');
+const editedBadge = document.getElementById('editedBadge');
+const dropZone = document.getElementById('dropZone');
 
 function setStatus(msg) {
   statusEl.textContent = msg;
 }
 
-uploadBtn.addEventListener('click', async () => {
-  const file = fileInput.files[0];
+function updateEditedBadge() {
+  editedBadge.textContent = `編集 ${Object.keys(editsByKey).length}件`;
+}
+
+function setButtonLoading(btn, loading) {
+  btn.classList.toggle('loading', loading);
+}
+
+function setFileName(name) {
+  fileNameEl.textContent = name ? `選択中: ${name}` : '';
+}
+
+async function handleFile(file) {
   if (!file) {
     setStatus('PDFファイルを選択してください。');
     return;
   }
   originalFile = file;
+  setFileName(file.name);
   downloadBtn.disabled = true;
 
+  uploadBtn.disabled = true;
+  downloadBtn.disabled = true;
+  setButtonLoading(uploadBtn, true);
   setStatus('アップロード中...');
+
   const formData = new FormData();
   formData.append('file', file);
 
@@ -117,25 +327,66 @@ uploadBtn.addEventListener('click', async () => {
     pagesData = data.pages;
     blocksData = data.blocks;
     Object.keys(editsByKey).forEach(k => delete editsByKey[k]);
+    updateEditedBadge();
     renderPages();
     setStatus(`解析完了: ${pagesData.length}ページ, ${blocksData.length}ブロック検出`);
   } catch (e) {
     setStatus('エラー: ' + e.message);
+  } finally {
+    uploadBtn.disabled = false;
+    setButtonLoading(uploadBtn, false);
+    downloadBtn.disabled = Object.keys(editsByKey).length === 0;
   }
+}
+
+uploadBtn.addEventListener('click', () => {
+  handleFile(fileInput.files[0]);
+});
+
+['dragenter', 'dragover'].forEach(evt => {
+  dropZone.addEventListener(evt, (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.add('drag-over');
+  });
+});
+
+['dragleave', 'drop'].forEach(evt => {
+  dropZone.addEventListener(evt, (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropZone.classList.remove('drag-over');
+  });
+});
+
+dropZone.addEventListener('drop', (e) => {
+  const file = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (!file) return;
+  if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+    setStatus('PDFファイルをドロップしてください。');
+    return;
+  }
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  fileInput.files = dt.files;
+  handleFile(file);
 });
 
 function renderPages() {
   pagesEl.innerHTML = '';
   pagesData.forEach((page, pageIndex) => {
+    const pageWidth = page.width * PREVIEW_ZOOM;
+    const pageHeight = page.height * PREVIEW_ZOOM;
+
     const wrap = document.createElement('div');
     wrap.className = 'page-wrap';
-    wrap.style.width = (page.width * PREVIEW_ZOOM) + 'px';
-    wrap.style.height = (page.height * PREVIEW_ZOOM) + 'px';
+    wrap.style.width = pageWidth + 'px';
+    wrap.style.aspectRatio = `${pageWidth} / ${pageHeight}`;
 
     const img = document.createElement('img');
     img.src = 'data:image/png;base64,' + page.image_base64;
-    img.width = page.width * PREVIEW_ZOOM;
-    img.height = page.height * PREVIEW_ZOOM;
+    img.width = pageWidth;
+    img.height = pageHeight;
     wrap.appendChild(img);
 
     blocksData
@@ -145,10 +396,10 @@ function renderPages() {
         const [x0, y0, x1, y1] = block.bbox;
         const box = document.createElement('div');
         box.className = 'block-box';
-        box.style.left = (x0 * PREVIEW_ZOOM) + 'px';
-        box.style.top = (y0 * PREVIEW_ZOOM) + 'px';
-        box.style.width = ((x1 - x0) * PREVIEW_ZOOM) + 'px';
-        box.style.height = ((y1 - y0) * PREVIEW_ZOOM) + 'px';
+        box.style.left = ((x0 * PREVIEW_ZOOM) / pageWidth * 100) + '%';
+        box.style.top = ((y0 * PREVIEW_ZOOM) / pageHeight * 100) + '%';
+        box.style.width = (((x1 - x0) * PREVIEW_ZOOM) / pageWidth * 100) + '%';
+        box.style.height = (((y1 - y0) * PREVIEW_ZOOM) / pageHeight * 100) + '%';
         box.title = block.text;
         box.dataset.key = `${pageIndex}:${idx}`;
         box.addEventListener('click', () => onBlockClick(block, idx, box));
@@ -165,6 +416,10 @@ const editModalSave = document.getElementById('editModalSave');
 const editModalCancel = document.getElementById('editModalCancel');
 
 let modalContext = null; // { block, idx, boxEl }
+
+function isModalOpen() {
+  return editModalOverlay.classList.contains('open');
+}
 
 function onBlockClick(block, idx, boxEl) {
   const current = editsByKey[`${block.page}:${idx}`];
@@ -196,6 +451,7 @@ function saveEditModal() {
   boxEl.title = newText;
 
   downloadBtn.disabled = Object.keys(editsByKey).length === 0;
+  updateEditedBadge();
   setStatus(`${Object.keys(editsByKey).length}件の編集を保持中。「編集後PDFをダウンロード」を押すと反映されます。`);
 
   closeEditModal();
@@ -207,6 +463,17 @@ editModalOverlay.addEventListener('click', (e) => {
   if (e.target === editModalOverlay) closeEditModal(); // オーバーレイクリックでキャンセル
 });
 
+document.addEventListener('keydown', (e) => {
+  if (!isModalOpen()) return;
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    closeEditModal();
+  } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    saveEditModal();
+  }
+});
+
 downloadBtn.addEventListener('click', async () => {
   const edits = Object.values(editsByKey);
   if (edits.length === 0 || !originalFile) {
@@ -214,7 +481,11 @@ downloadBtn.addEventListener('click', async () => {
     return;
   }
 
+  uploadBtn.disabled = true;
+  downloadBtn.disabled = true;
+  setButtonLoading(downloadBtn, true);
   setStatus('編集を適用中...');
+
   const formData = new FormData();
   formData.append('file', originalFile);
   formData.append('edits', JSON.stringify(edits));
@@ -237,7 +508,24 @@ downloadBtn.addEventListener('click', async () => {
     setStatus('編集後PDFをダウンロードしました。');
   } catch (e) {
     setStatus('エラー: ' + e.message);
+  } finally {
+    uploadBtn.disabled = false;
+    setButtonLoading(downloadBtn, false);
+    downloadBtn.disabled = Object.keys(editsByKey).length === 0;
   }
+});
+
+resetBtn.addEventListener('click', () => {
+  originalFile = null;
+  pagesData = [];
+  blocksData = [];
+  Object.keys(editsByKey).forEach(k => delete editsByKey[k]);
+  fileInput.value = '';
+  pagesEl.innerHTML = '';
+  downloadBtn.disabled = true;
+  setFileName('');
+  updateEditedBadge();
+  setStatus('');
 });
 </script>
 </body>
