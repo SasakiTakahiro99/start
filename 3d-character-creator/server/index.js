@@ -1,8 +1,15 @@
 // server/index.js
-import 'dotenv/config';
+import { fileURLToPath } from 'url';
+import path from 'path';
+import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
 import generateRouter from './routes/generate.js';
+
+// 起動時のカレントディレクトリ(npm --prefix経由等)に依存せず、
+// このファイル自身の場所を基準に.envを読み込む。
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 const app = express();
 app.use(cors()); // フロントエンドが別オリジン(file://やlocalhost別ポート)から呼ぶため許可

@@ -12,6 +12,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "8001", "--directory", "3d-character-creator"],
       "port": 8001
+    },
+    {
+      "name": "3d-character-creator-server",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start", "--prefix", "3d-character-creator/server"],
+      "port": 3001
     }
   ]
 }

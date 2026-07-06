@@ -76,6 +76,15 @@ async function handleGenerate(formParams) {
   }
 }
 
+// サーバーは相対パス(プロキシ中継エンドポイント)またはKhronosグループCDN等の絶対URL(デモ用)を返す。
+// 相対パスの場合のみPROXY_BASE_URLを前置する。
+function resolveModelUrl(modelUrl) {
+  if (typeof modelUrl === 'string' && modelUrl.startsWith('/')) {
+    return `${PROXY_BASE_URL}${modelUrl}`;
+  }
+  return modelUrl;
+}
+
 function pollJobStatus(jobId, sourceParams) {
   const startTime = Date.now();
   let errorRetryCount = 0;
@@ -98,11 +107,20 @@ function pollJobStatus(jobId, sourceParams) {
           uiHandle.setGeneratingState(true, 'モデルを読み込んでいます…');
           const generatedModel = {
             modelId: jobId,
-            modelUrl: body.modelUrl,
+            modelUrl: resolveModelUrl(body.modelUrl),
             generatedAt: new Date().toISOString(),
             sourceParams,
           };
-          await loadCharacterModel(character, generatedModel.modelUrl);
+          try {
+            await loadCharacterModel(character, generatedModel.modelUrl);
+          } catch (loadErr) {
+            // ステータス取得自体は成功しているため、これをerrorRetryCountによる再試行対象にはしない
+            // (再試行してもモデル読み込み失敗は解消せず、無限ループになるため即座にエラー終了する)
+            uiHandle.setGeneratingState(false);
+            uiHandle.showError('モデルの読み込みに失敗しました。');
+            reject(loadErr);
+            return;
+          }
           currentGeneratedModel = generatedModel;
           currentParams = sourceParams;
           uiHandle.clearGenerationNotice();

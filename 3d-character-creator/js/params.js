@@ -61,7 +61,7 @@ export function validateAppearanceDescription(text) {
 }
 
 /**
- * 生成パラメータからMeshy AI想定APIへ送るプロンプト文字列を組み立てる。
+ * 生成パラメータからTripo AI想定APIへ送るプロンプト文字列を組み立てる。
  * @param {object} params - normalizeParams済みのGenerationParams
  * @returns {string} プロンプト文字列
  */

@@ -1,9 +1,14 @@
 // server/routes/generate.js
 // POST /api/generate, GET /api/generate/:jobId/status のエンドポイント実装（詳細設計書v2 5.6節）。
+// AI 3Dモデル生成APIとしてTripo AI(https://www.tripo3d.ai/)を利用する。
 import { Router } from 'express';
-import { createTextTo3DJob, getTextTo3DJobStatus, MeshyApiError } from '../meshyClient.js';
+import { createTextTo3DJob, getTextTo3DJobStatus, TripoApiError } from '../tripoClient.js';
 
 const router = Router();
+
+// Tripo CDNの署名付きGLB URLはCORSヘッダーを返さずブラウザから直接fetchできないため、
+// jobIdごとに実URLをキャッシュし、GET /:jobId/model 経由でサーバー側が取得・中継する。
+const glbUrlCache = new Map();
 
 const DEMO_FALLBACK_JOB_ID = 'demo-fallback';
 // 注記: 詳細設計書v2 6.2節ではThree.js公式サンプルリポジトリ(mrdoob/three.js)経由のURLを
@@ -63,7 +68,7 @@ router.post('/', async (req, res) => {
     const { taskId } = await createTextTo3DJob(body.prompt);
     return res.status(202).json({ jobId: taskId });
   } catch (error) {
-    if (error instanceof MeshyApiError && error.statusCode === 503) {
+    if (error instanceof TripoApiError && error.statusCode === 503) {
       return res.status(503).json({
         error: 'API_KEY_NOT_CONFIGURED',
         message: 'AIモデル生成APIキーが設定されていません。デモ用モデルを表示します。',
@@ -74,7 +79,7 @@ router.post('/', async (req, res) => {
       });
     }
     return res.status(502).json({
-      error: 'MESHY_API_ERROR',
+      error: 'TRIPO_API_ERROR',
       message: 'AIモデル生成APIの呼び出しに失敗しました。',
     });
   }
@@ -95,28 +100,70 @@ router.get('/:jobId/status', async (req, res) => {
   try {
     const result = await getTextTo3DJobStatus(jobId);
     const normalizedStatus = normalizeStatus(result.status);
+    if (normalizedStatus === 'succeeded' && result.glbUrl) {
+      glbUrlCache.set(jobId, result.glbUrl);
+    }
     return res.status(200).json({
       status: normalizedStatus,
       progress: result.progress,
-      modelUrl: normalizedStatus === 'succeeded' ? result.glbUrl : null,
+      // Tripo CDNの生URLはCORSでブラウザから直接fetchできないため、このプロキシの中継エンドポイントを返す
+      modelUrl: normalizedStatus === 'succeeded' ? `/api/generate/${jobId}/model` : null,
       errorMessage: normalizedStatus === 'failed' ? result.errorMessage || '生成に失敗しました。' : null,
     });
   } catch (error) {
-    if (error instanceof MeshyApiError && error.statusCode === 503) {
+    if (error instanceof TripoApiError && error.statusCode === 503) {
       return res.status(503).json({
         error: 'API_KEY_NOT_CONFIGURED',
         message: 'AIモデル生成APIキーが設定されていません。',
       });
     }
     return res.status(502).json({
-      error: 'MESHY_API_ERROR',
+      error: 'TRIPO_API_ERROR',
       message: 'AIモデル生成APIの呼び出しに失敗しました。',
     });
   }
 });
 
-function normalizeStatus(meshyStatus) {
-  switch (meshyStatus) {
+router.get('/:jobId/model', async (req, res) => {
+  const { jobId } = req.params;
+
+  if (jobId === DEMO_FALLBACK_JOB_ID) {
+    // デモ用モデルは/statusで生URL(Khronosグループ公式CDN、CORS問題なし)を直接返しており
+    // フロントエンドがこのルートに来ることは想定していない。
+    return res.status(404).json({ error: 'NOT_FOUND', message: 'デモ用モデルはこのエンドポイントを使用しません。' });
+  }
+
+  try {
+    let glbUrl = glbUrlCache.get(jobId);
+    if (!glbUrl) {
+      const result = await getTextTo3DJobStatus(jobId);
+      if (normalizeStatus(result.status) === 'succeeded' && result.glbUrl) {
+        glbUrl = result.glbUrl;
+        glbUrlCache.set(jobId, glbUrl);
+      }
+    }
+    if (!glbUrl) {
+      return res.status(404).json({ error: 'NOT_FOUND', message: '指定されたジョブのモデルが見つかりません。' });
+    }
+
+    const glbRes = await fetch(glbUrl);
+    if (!glbRes.ok || !glbRes.body) {
+      return res.status(502).json({ error: 'TRIPO_CDN_ERROR', message: 'モデルデータの取得に失敗しました。' });
+    }
+
+    res.setHeader('Content-Type', 'model/gltf-binary');
+    const buffer = Buffer.from(await glbRes.arrayBuffer());
+    return res.status(200).send(buffer);
+  } catch (error) {
+    return res.status(502).json({
+      error: 'TRIPO_CDN_ERROR',
+      message: 'モデルデータの取得に失敗しました。',
+    });
+  }
+});
+
+function normalizeStatus(tripoStatus) {
+  switch (tripoStatus) {
     case 'PENDING':
       return 'pending';
     case 'IN_PROGRESS':
