@@ -85,6 +85,36 @@ def compute_value_bbox(
     return [x0 + label_width, y0, x1, y1]
 
 
+def _detect_background_fill(page: "fitz.Page", rect: "fitz.Rect") -> tuple[float, float, float] | None:
+    """rectを覆う背景塗りつぶし矩形の色を検出する。
+
+    page.get_drawings()から塗りつぶし(fill)ありの矩形描画を探し、rectを
+    包含または大きく重なるものの中で最も面積が小さい(=セル単位に近い)ものを
+    背景色として採用する。見つからなければNoneを返す(呼び出し側で白にフォールバック)。
+    """
+    best_fill = None
+    best_area = None
+    for drawing in page.get_drawings():
+        fill = drawing.get("fill")
+        if not fill:
+            continue
+        d_rect = drawing.get("rect")
+        if d_rect is None:
+            continue
+        d_rect = fitz.Rect(d_rect)
+        intersection = d_rect & rect
+        if intersection.is_empty:
+            continue
+        # rectの大部分(9割以上)を覆っている矩形だけを背景候補とする
+        if rect.get_area() <= 0 or intersection.get_area() / rect.get_area() < 0.9:
+            continue
+        area = d_rect.get_area()
+        if best_area is None or area < best_area:
+            best_area = area
+            best_fill = fill
+    return best_fill
+
+
 def _subset_fonts(doc: "fitz.Document") -> None:
     """出力前にフォントをサブセット化し、埋め込みファイルサイズを削減する。
 
@@ -133,7 +163,10 @@ def edit_pdf(
 
             rect = fitz.Rect(bbox)
 
-            page.add_redact_annot(rect, fill=(1, 1, 1))
+            background_fill = _detect_background_fill(page, rect)
+            fill_color = background_fill if background_fill is not None else (1, 1, 1)
+
+            page.add_redact_annot(rect, fill=fill_color)
             page.apply_redactions()
 
             tw = fitz.TextWriter(page.rect)

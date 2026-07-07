@@ -16,9 +16,10 @@ import os
 import sys
 import unicodedata
 
+import fitz  # PyMuPDF
 import pytest
 
-from pdf_editor import extract_text_blocks, replace_text_block
+from pdf_editor import edit_pdf, extract_text_blocks, replace_text_block
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_PDF = os.path.join(BASE_DIR, "sample_resume.pdf")
@@ -64,6 +65,76 @@ def test_replace_text_block_success(tmp_path):
 
     assert has_new, f"編集後テキストに '{NEW_NAME}' が含まれていません: {normalized_full!r}"
     assert not has_old, f"編集後テキストに旧テキスト '{OLD_NAME}' が残っています: {normalized_full!r}"
+
+
+def test_edit_pdf_preserves_cell_background_color(tmp_path):
+    """背景色付きセルを編集しても、redact消去で背景色が白くならず保持されることを確認する。"""
+    src_pdf = os.path.join(tmp_path, "bg_source.pdf")
+    output_pdf = os.path.join(tmp_path, "bg_output.pdf")
+
+    bg_color = (0.9, 0.9, 0.9)
+    cell_rect = fitz.Rect(50, 50, 250, 100)
+
+    doc = fitz.open()
+    page = doc.new_page()
+    page.draw_rect(cell_rect, color=None, fill=bg_color)
+    page.insert_text((cell_rect.x0 + 5, cell_rect.y1 - 10), "old text", fontsize=12)
+    doc.save(src_pdf)
+    doc.close()
+
+    edit_pdf(
+        pdf_path=src_pdf,
+        edits=[{"page": 0, "bbox": [cell_rect.x0, cell_rect.y0, cell_rect.x0 + 60, cell_rect.y1], "new_text": "new"}],
+        output_path=output_pdf,
+    )
+    assert os.path.exists(output_pdf)
+
+    out_doc = fitz.open(output_pdf)
+    try:
+        out_page = out_doc[0]
+        pix = out_page.get_pixmap()
+        # 編集領域の右端付近(新テキストの外側の余白)をサンプリングし、
+        # 白(255,255,255)ではなく元の背景色(グレー)に近いことを確認する。
+        sample_x = int(cell_rect.x0 + 55)
+        sample_y = int(cell_rect.y0 + 5)
+        r, g, b = pix.pixel(sample_x, sample_y)[:3]
+        expected = tuple(round(c * 255) for c in bg_color)
+        assert (r, g, b) != (255, 255, 255), "背景色が白で上書きされています。"
+        for actual, exp in zip((r, g, b), expected):
+            assert abs(actual - exp) <= 5, f"背景色が保持されていません: got={r,g,b}, expected={expected}"
+    finally:
+        out_doc.close()
+
+
+def test_edit_pdf_white_background_still_erases_to_white(tmp_path):
+    """背景塗りつぶしがない(白背景)セルを編集した場合、従来通り白で消去・再描画されることを確認する。"""
+    src_pdf = os.path.join(tmp_path, "white_source.pdf")
+    output_pdf = os.path.join(tmp_path, "white_output.pdf")
+
+    cell_rect = fitz.Rect(50, 50, 250, 100)
+
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((cell_rect.x0 + 5, cell_rect.y1 - 10), "old text", fontsize=12)
+    doc.save(src_pdf)
+    doc.close()
+
+    edit_pdf(
+        pdf_path=src_pdf,
+        edits=[{"page": 0, "bbox": [cell_rect.x0, cell_rect.y0, cell_rect.x0 + 60, cell_rect.y1], "new_text": "new"}],
+        output_path=output_pdf,
+    )
+
+    out_doc = fitz.open(output_pdf)
+    try:
+        out_page = out_doc[0]
+        pix = out_page.get_pixmap()
+        sample_x = int(cell_rect.x0 + 55)
+        sample_y = int(cell_rect.y0 + 5)
+        r, g, b = pix.pixel(sample_x, sample_y)[:3]
+        assert (r, g, b) == (255, 255, 255), f"白背景セルが白以外で消去されています: {(r, g, b)}"
+    finally:
+        out_doc.close()
 
 
 def main() -> int:
