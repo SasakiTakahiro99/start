@@ -4,7 +4,7 @@
     {
       "name": "pdf-editor-api",
       "runtimeExecutable": "uvicorn",
-      "runtimeArgs": ["api_server:app", "--host", "127.0.0.1", "--port", "8000"],
+      "runtimeArgs": ["api_server:app", "--host", "127.0.0.1", "--port", "8000", "--app-dir", "pdf-edit-tool"],
       "port": 8000
     },
     {
