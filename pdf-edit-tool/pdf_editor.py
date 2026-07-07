@@ -29,28 +29,74 @@ def normalize_text(s: str) -> str:
     return unicodedata.normalize("NFKC", s)
 
 
-def extract_text_blocks(pdf_path: str) -> list[dict]:
-    """PDF内の各ページのテキストブロック(span単位)を抽出する。
+def _group_spans_into_rows(spans: list[dict]) -> list[list[dict]]:
+    """spanをY座標の重なりに基づいて「行」ごとにグルーピングする。
 
-    get_text("dict") の block/line/span 構造からspan単位で情報を取り出し、
+    edit_pdf()で値部分だけをTextWriterで再描画すると、そのbaseline位置が
+    元のラベルspanとごくわずか(1pt未満)にずれ、MuPDFのget_text("dict")上は
+    ラベルと値が別々のline(=別々のblock)として抽出されてしまう。そのまま
+    span単位で返すと、2回目以降の編集でlabelパターン(ラベル+値の結合)が
+    再現できず、値部分のbboxを見失って前回描画したテキストの上に新テキストを
+    重ね書きしてしまう不具合につながる。そのため、line構造をそのまま信用せず、
+    bboxのY範囲が重なるspan同士を同じ行とみなして再グルーピングする。
+    """
+    remaining = sorted(spans, key=lambda s: (s["bbox"][1], s["bbox"][0]))
+    rows: list[list[dict]] = []
+    for span in remaining:
+        y0, y1 = span["bbox"][1], span["bbox"][3]
+        placed = False
+        for row in rows:
+            row_y0 = min(s["bbox"][1] for s in row)
+            row_y1 = max(s["bbox"][3] for s in row)
+            overlap = min(y1, row_y1) - max(y0, row_y0)
+            min_height = min(y1 - y0, row_y1 - row_y0)
+            if min_height > 0 and overlap / min_height >= 0.5:
+                row.append(span)
+                placed = True
+                break
+        if not placed:
+            rows.append([span])
+    for row in rows:
+        row.sort(key=lambda s: s["bbox"][0])
+    return rows
+
+
+def extract_text_blocks(pdf_path: str) -> list[dict]:
+    """PDF内の各ページのテキストブロックを行単位で抽出する。
+
+    get_text("dict") の block/line/span 構造からspanを取り出した上で、
+    同じ行とみなせるspan(Y座標が重なるspan)をX座標順に連結し、
     {"page": ページ番号(0始まり), "text": テキスト, "bbox": [x0, y0, x1, y1],
      "font_size": フォントサイズ} の辞書のリストを返す。
+
+    edit_pdf()で再描画した値spanは元のラベルspanとbaseline位置がわずかに
+    ずれるため、MuPDFのline構造だけに頼るとラベルと値が別ブロックとして
+    分離されてしまう(_group_spans_into_rows()参照)。それを防ぐため、
+    行のグルーピングはline構造ではなくbboxのY方向の重なりで行う。
     """
     blocks: list[dict] = []
     doc = fitz.open(pdf_path)
     try:
         for page_index, page in enumerate(doc):
+            spans: list[dict] = []
             for block in page.get_text("dict")["blocks"]:
                 for line in block.get("lines", []):
                     for span in line["spans"]:
-                        blocks.append(
-                            {
-                                "page": page_index,
-                                "text": span["text"],
-                                "bbox": list(span["bbox"]),
-                                "font_size": span["size"],
-                            }
-                        )
+                        spans.append(span)
+
+            for row in _group_spans_into_rows(spans):
+                x0 = min(s["bbox"][0] for s in row)
+                y0 = min(s["bbox"][1] for s in row)
+                x1 = max(s["bbox"][2] for s in row)
+                y1 = max(s["bbox"][3] for s in row)
+                blocks.append(
+                    {
+                        "page": page_index,
+                        "text": "".join(s["text"] for s in row),
+                        "bbox": [x0, y0, x1, y1],
+                        "font_size": row[0]["size"],
+                    }
+                )
     finally:
         doc.close()
     return blocks

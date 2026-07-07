@@ -186,6 +186,92 @@ def test_edit_pdf_white_background_still_erases_to_white(tmp_path):
         out_doc.close()
 
 
+def test_edit_pdf_repeated_label_edits_do_not_overlap_text(tmp_path):
+    """edit_pdf()を複数回(別々の保存を挟んで)呼び出し、labelパターンで同じ
+    フィールドを繰り返し再編集しても、前回描画した値の上に新しい値が
+    重ね書きされず正しく置き換わることを確認する回帰テスト。
+
+    再描画したvalue spanは元のlabel spanとbaseline位置がわずかにずれるため、
+    extract_text_blocks()がline構造だけに頼るとlabelとvalueが別ブロックに
+    分離され、2回目以降のlabel指定編集でvalue部分のbboxを見失って前回の
+    テキストの上に新テキストが重なって描画される(判読不能になる)不具合の
+    再現・回帰テスト。3回連続で編集を重ねても問題ないことも確認する。
+    """
+    src_pdf = os.path.join(tmp_path, "label_source.pdf")
+
+    doc = fitz.open()
+    page = doc.new_page()
+    fontname = "notojp"
+    from pdf_editor import FONT_PATH
+
+    page.insert_font(fontname=fontname, fontfile=FONT_PATH)
+    # 氏名欄の後に他のフィールド行を続ける(sample_resume.pdfと同様の複数行構成)。
+    # 単一行だけのPDFだとMuPDFのline結合判定にたまたま吸収され、再描画後の
+    # label/valueの分離(不具合の再現条件)が安定して起きないため。
+    page.insert_text((50, 106), "氏名: 山田太郎", fontname=fontname, fontsize=12)
+    page.insert_text((50, 136), "生年月日: 1999年8月1日", fontname=fontname, fontsize=12)
+    page.insert_text((50, 166), "住所: 東京都千代田区一丁目1番1号", fontname=fontname, fontsize=12)
+    doc.save(src_pdf)
+    doc.close()
+
+    names = ["鈴木花子", "田中次郎", "佐藤三郎"]
+    cur_path = src_pdf
+    for i, new_name in enumerate(names, start=1):
+        blocks = extract_text_blocks(cur_path)
+        target = None
+        for b in blocks:
+            normalized = unicodedata.normalize("NFKC", b["text"])
+            if "氏名" in normalized:
+                target = b
+        assert target is not None, f"{i}回目: '氏名'を含むブロックが見つかりませんでした。"
+
+        out_path = os.path.join(tmp_path, f"label_round{i}.pdf")
+        edit_pdf(
+            pdf_path=cur_path,
+            edits=[
+                {
+                    "page": target["page"],
+                    "bbox": target["bbox"],
+                    "text": target["text"],
+                    "label": "氏名: ",
+                    "new_text": new_name,
+                    "font_size": target["font_size"],
+                }
+            ],
+            output_path=out_path,
+        )
+        cur_path = out_path
+
+    final_blocks = extract_text_blocks(cur_path)
+    name_blocks = [b for b in final_blocks if "氏名" in unicodedata.normalize("NFKC", b["text"])]
+    assert len(name_blocks) == 1, f"氏名ブロックが1つに統合されていません: {name_blocks!r}"
+
+    final_normalized = unicodedata.normalize("NFKC", name_blocks[0]["text"])
+    assert "佐藤三郎" in final_normalized, f"最終的な氏名が更新されていません: {final_normalized!r}"
+    for old_name in ("山田太郎", "鈴木花子", "田中次郎"):
+        assert old_name not in final_normalized, (
+            f"旧テキスト '{old_name}' が氏名ブロックに残っています: {final_normalized!r}"
+        )
+
+    out_doc = fitz.open(cur_path)
+    try:
+        out_page = out_doc[0]
+        pix = out_page.get_pixmap(matrix=fitz.Matrix(4, 4))
+        # 最終テキストが描画されている領域に、非白ピクセルが存在すること
+        # (=描画自体が消えていないこと)を確認する。
+        found_non_white = False
+        for x in range(int(50 * 4), int(150 * 4)):
+            for y in range(int(105 * 4), int(126 * 4)):
+                if pix.pixel(x, y)[:3] != (255, 255, 255):
+                    found_non_white = True
+                    break
+            if found_non_white:
+                break
+        assert found_non_white, "最終編集後のテキストが描画されていません(空白になっています)。"
+    finally:
+        out_doc.close()
+
+
 def main() -> int:
     if not os.path.exists(SRC_PDF):
         raise FileNotFoundError(f"サンプルPDFが見つかりません: {SRC_PDF}")
