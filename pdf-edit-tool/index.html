@@ -5,19 +5,19 @@
 <title>履歴書PDF部分編集MVP</title>
 <style>
   :root {
-    --color-bg: #f4f6f9;
+    --color-bg: #faf6f5;
     --color-surface: #ffffff;
-    --color-border: #e0e4ea;
-    --color-primary: #3b6fe0;
-    --color-primary-hover: #2f5bc4;
-    --color-text: #232a35;
-    --color-text-muted: #6b7280;
-    --color-accent-green: #1e8e5a;
-    --color-accent-green-bg: rgba(30, 142, 90, 0.12);
-    --color-accent-red: #d64545;
-    --color-accent-red-bg: rgba(214, 69, 69, 0.08);
-    --radius: 10px;
-    --shadow-card: 0 2px 10px rgba(20, 30, 60, 0.06);
+    --color-border: #ece1e3;
+    --color-primary: #c98a94;
+    --color-primary-hover: #b8747f;
+    --color-text: #4a4149;
+    --color-text-muted: #93838a;
+    --color-accent-green: #7d8f6e;
+    --color-accent-green-bg: rgba(125, 143, 110, 0.12);
+    --color-accent-red: #c97b6e;
+    --color-accent-red-bg: rgba(201, 123, 110, 0.08);
+    --radius: 16px;
+    --shadow-card: 0 4px 16px rgba(180, 140, 150, 0.1);
   }
 
   * { box-sizing: border-box; }
@@ -25,9 +25,10 @@
   body {
     font-family: "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif;
     margin: 0;
-    padding: 24px;
+    padding: 32px;
     background: var(--color-bg);
     color: var(--color-text);
+    line-height: 1.6;
   }
 
   .app-header {
@@ -36,12 +37,14 @@
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 12px;
-    margin-bottom: 20px;
+    margin-bottom: 24px;
   }
 
   .app-header h1 {
     font-size: 20px;
+    font-weight: 600;
     margin: 0;
+    letter-spacing: 0.02em;
   }
 
   #editedBadge {
@@ -52,7 +55,7 @@
     color: var(--color-accent-green);
     border: 1px solid var(--color-accent-green);
     border-radius: 999px;
-    padding: 4px 12px;
+    padding: 5px 14px;
     font-size: 13px;
     font-weight: 600;
   }
@@ -62,8 +65,8 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
     box-shadow: var(--shadow-card);
-    padding: 16px 20px;
-    margin-bottom: 20px;
+    padding: 20px 24px;
+    margin-bottom: 24px;
   }
 
   .toolbar {
@@ -82,12 +85,12 @@
   #dropZone {
     border: 2px dashed var(--color-border);
     border-radius: var(--radius);
-    padding: 24px;
+    padding: 28px;
     text-align: center;
     color: var(--color-text-muted);
     font-size: 14px;
-    margin-top: 14px;
-    transition: background 0.15s, border-color 0.15s;
+    margin-top: 16px;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
   }
 
   #dropZone.drag-over {
@@ -99,29 +102,30 @@
   button {
     font-family: inherit;
     font-size: 14px;
-    padding: 8px 16px;
-    border-radius: 8px;
+    padding: 9px 18px;
+    border-radius: 999px;
     border: 1px solid var(--color-border);
     background: var(--color-surface);
     color: var(--color-text);
     cursor: pointer;
-    transition: background 0.15s, box-shadow 0.15s;
+    transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
     display: inline-flex;
     align-items: center;
     gap: 8px;
   }
 
-  button:hover:not(:disabled) { background: #eef1f6; }
+  button:hover:not(:disabled) { background: #f7eff0; box-shadow: 0 2px 8px rgba(180, 140, 150, 0.15); }
+  button:active:not(:disabled) { transform: translateY(1px); }
 
   button.primary {
     background: var(--color-primary);
     border-color: var(--color-primary);
     color: #fff;
   }
-  button.primary:hover:not(:disabled) { background: var(--color-primary-hover); }
+  button.primary:hover:not(:disabled) { background: var(--color-primary-hover); border-color: var(--color-primary-hover); }
 
   button:disabled {
-    opacity: 0.5;
+    opacity: 0.45;
     cursor: not-allowed;
   }
 
@@ -135,7 +139,7 @@
     animation: spin 0.7s linear infinite;
   }
   button:not(.primary) .spinner {
-    border: 2px solid rgba(59, 111, 224, 0.25);
+    border: 2px solid rgba(201, 138, 148, 0.25);
     border-top-color: var(--color-primary);
   }
   button.loading .spinner { display: inline-block; }
@@ -146,7 +150,7 @@
   }
 
   #status {
-    margin-top: 4px;
+    margin-top: 6px;
     color: var(--color-text-muted);
     white-space: pre-wrap;
     font-size: 13px;
@@ -168,9 +172,9 @@
   .page-wrap {
     position: relative;
     display: inline-block;
-    margin-bottom: 20px;
+    margin-bottom: 24px;
     border: 1px solid var(--color-border);
-    border-radius: 6px;
+    border-radius: 12px;
     overflow: hidden;
     box-shadow: var(--shadow-card);
     max-width: 100%;
@@ -179,19 +183,21 @@
 
   .block-box {
     position: absolute;
-    border: 1px solid rgba(255, 0, 0, 0.6);
-    background: rgba(255, 0, 0, 0.05);
+    border: 1.5px solid rgba(201, 123, 110, 0.65);
+    background: rgba(201, 123, 110, 0.06);
     cursor: pointer;
     box-sizing: border-box;
+    border-radius: 3px;
+    transition: background 0.15s;
   }
-  .block-box:hover { background: rgba(255, 0, 0, 0.25); }
-  .block-box.edited { border-color: rgba(0, 128, 0, 0.8); background: rgba(0, 128, 0, 0.15); }
+  .block-box:hover { background: rgba(201, 123, 110, 0.22); }
+  .block-box.edited { border-color: rgba(125, 143, 110, 0.85); background: rgba(125, 143, 110, 0.15); }
 
   #editModalOverlay {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.4);
+    background: rgba(74, 65, 73, 0.35);
     align-items: center;
     justify-content: center;
     z-index: 1000;
@@ -200,26 +206,33 @@
   #editModal {
     background: var(--color-surface);
     border-radius: var(--radius);
-    padding: 16px 20px;
+    padding: 20px 24px;
     width: 420px;
     max-width: 90vw;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 10px 32px rgba(120, 90, 100, 0.22);
   }
-  #editModal h2 { margin: 0 0 6px; font-size: 16px; }
-  #editModalHint { margin: 0 0 10px; font-size: 12px; color: var(--color-text-muted); }
+  #editModal h2 { margin: 0 0 6px; font-size: 16px; font-weight: 600; }
+  #editModalHint { margin: 0 0 12px; font-size: 12px; color: var(--color-text-muted); }
   #editModalTextarea {
     width: 100%;
     box-sizing: border-box;
     min-height: 120px;
     font-size: 14px;
     font-family: inherit;
+    line-height: 1.6;
     resize: vertical;
-    padding: 8px;
+    padding: 10px 12px;
     border: 1px solid var(--color-border);
-    border-radius: 6px;
+    border-radius: 10px;
+    color: var(--color-text);
+  }
+  #editModalTextarea:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(201, 138, 148, 0.15);
   }
   #editModalButtons {
-    margin-top: 12px;
+    margin-top: 14px;
     display: flex;
     justify-content: flex-end;
     gap: 8px;
