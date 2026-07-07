@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>共有アルバム</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>📖 <span id="share-title">共有アルバム</span></h1>
+  <div class="badge">閲覧専用（アカウント不要）</div>
+</header>
+<main>
+  <section class="panel">
+    <div class="preview-controls">
+      <button id="prev-page">◀ 前へ</button>
+      <span id="page-indicator">-</span>
+      <button id="next-page">次へ ▶</button>
+    </div>
+    <div id="book" class="book">
+      <div class="book-empty">読み込み中…</div>
+    </div>
+  </section>
+</main>
+<script>
+const state = { pages: [], spread: 0 };
+const $ = (s) => document.querySelector(s);
+
+function getToken() {
+  const p = new URLSearchParams(location.search);
+  return p.get('token');
+}
+
+async function load() {
+  const token = getToken();
+  if (!token) { $('#book').innerHTML = '<div class="book-empty">トークンがありません。</div>'; return; }
+  try {
+    const r = await fetch('/share/' + encodeURIComponent(token));
+    if (!r.ok) throw new Error('リンクが無効です');
+    const j = await r.json();
+    $('#share-title').textContent = j.title || '共有アルバム';
+    state.pages = j.pages || [];
+    render();
+  } catch (e) {
+    $('#book').innerHTML = `<div class="book-empty">${e.message || e}</div>`;
+  }
+}
+
+function move(dir) {
+  const max = Math.max(0, Math.ceil(state.pages.length / 2) - 1);
+  state.spread = Math.min(max, Math.max(0, state.spread + dir));
+  render();
+}
+
+function render() {
+  const book = $('#book');
+  if (!state.pages.length) {
+    book.innerHTML = '<div class="book-empty">写真がありません。</div>';
+    $('#page-indicator').textContent = '-';
+    return;
+  }
+  const left = state.pages[state.spread * 2];
+  const right = state.pages[state.spread * 2 + 1];
+  book.innerHTML = '';
+  [left, right].forEach((pg) => {
+    if (!pg) return;
+    const el = document.createElement('div');
+    el.className = 'page ' + (pg.layout_type || 'single');
+    pg.photos.forEach((ph) => {
+      const img = document.createElement('img');
+      img.src = ph.thumbnail_url;
+      el.appendChild(img);
+    });
+    const no = document.createElement('div');
+    no.className = 'page-no';
+    no.textContent = `${pg.page_index + 1} ページ`;
+    el.appendChild(no);
+    book.appendChild(el);
+  });
+  $('#page-indicator').textContent = `見開き ${state.spread + 1} / ${Math.ceil(state.pages.length / 2)}`;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  $('#prev-page').addEventListener('click', () => move(-1));
+  $('#next-page').addEventListener('click', () => move(1));
+  load();
+});
+</script>
+</body>
+</html>

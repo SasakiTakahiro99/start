@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>フォトアルバム</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>📖 フォトアルバム</h1>
+  <div id="clip-badge" class="badge">AI状態を確認中…</div>
+</header>
+
+<nav class="steps">
+  <span class="step" data-step="1">① 取り込み</span>
+  <span class="step" data-step="2">② 探す・選ぶ</span>
+  <span class="step" data-step="3">③ プレビュー・共有</span>
+</nav>
+
+<main>
+  <!-- S1 取り込み -->
+  <section id="s-import" class="panel">
+    <h2>① 写真を取り込む</h2>
+    <p class="hint">写真を選ぶと、日付・場所・色・被写体を自動で読み取ります。</p>
+    <input type="file" id="file-input" accept="image/*" multiple>
+    <button id="import-btn">取り込む</button>
+    <div id="import-progress" class="progress"></div>
+  </section>
+
+  <!-- S2 探す -->
+  <section id="s-search" class="panel">
+    <h2>② 写真を探して選ぶ</h2>
+    <div class="album-line">
+      アルバム: <strong id="album-title">（未作成）</strong>
+      <span id="album-count" class="muted"></span>
+    </div>
+    <div class="search-entries">
+      <div class="entry">
+        <h3>🔍 キーワードで探す</h3>
+        <div class="row">
+          <input type="text" id="keyword-input" placeholder="例: 海、夜景、食べ物…">
+          <button id="keyword-btn">探す</button>
+        </div>
+        <div class="chips" id="tag-chips"></div>
+      </div>
+      <div class="entry">
+        <h3>📅 期間で探す</h3>
+        <div class="row">
+          <input type="number" id="year-input" placeholder="年" min="1990" max="2100">
+          <input type="number" id="month-input" placeholder="月" min="1" max="12">
+          <button id="period-btn">この期間で探す</button>
+        </div>
+        <button id="suggest-btn" class="ghost">💡 思いつかない… → この月はどう？</button>
+      </div>
+    </div>
+
+    <!-- 候補提示 3枚 + 逃げ道 -->
+    <div id="candidates-area" class="hidden">
+      <h3 id="candidates-heading">オススメ順の候補</h3>
+      <div id="candidates" class="candidates"></div>
+      <div class="escape">
+        <button id="all-in-btn" class="primary big">🎯 3枚まとめて全部入れる（迷ったらこれ！）</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- S5 プレビュー -->
+  <section id="s-preview" class="panel">
+    <h2>③ 本のようにプレビュー & 共有</h2>
+    <div class="preview-controls">
+      <button id="prev-page">◀ 前へ</button>
+      <span id="page-indicator">-</span>
+      <button id="next-page">次へ ▶</button>
+      <button id="share-btn" class="primary">🔗 共有リンクを発行</button>
+    </div>
+    <div id="book" class="book">
+      <div class="book-empty">まだ写真がありません。②で写真を選んでください。</div>
+    </div>
+    <div id="share-result" class="share-result hidden"></div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
