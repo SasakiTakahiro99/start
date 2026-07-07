@@ -163,7 +163,10 @@ def add_album_photos(album_id: int, photo_ids: str = Form(...)):
     """photo_ids はカンマ区切り(1枚 or 3枚一括の逃げ道)。"""
     if not db.get_album(album_id):
         raise HTTPException(404, "アルバムが見つかりません")
-    ids = [int(x) for x in photo_ids.split(",") if x.strip()]
+    try:
+        ids = [int(x) for x in photo_ids.split(",") if x.strip()]
+    except ValueError:
+        raise HTTPException(400, "写真IDは数値で指定してください")
     if not ids:
         raise HTTPException(400, "写真IDが指定されていません")
     pages = album_mod.add_photos(album_id, ids)

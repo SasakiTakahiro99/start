@@ -56,6 +56,7 @@ def _fallback_match(keyword: str, photo: dict) -> float:
 
 def _rank(scored, count):
     """(photo, match, quality)のリストをtotalで並べ上位count件に順位を付す。"""
+    count = max(1, count)
     for item in scored:
         item["total"] = round(
             config.SCORE_WEIGHT_MATCH * item["match"]
