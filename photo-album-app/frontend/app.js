@@ -4,6 +4,7 @@ const state = {
   candidates: [],
   pages: [],
   spread: 0, // 見開きインデックス(0=1〜2ページ目)
+  share: null, // 発行済み共有リンク { token, url } or null
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -13,6 +14,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   await refreshClipBadge();
   await ensureAlbum();
   await loadTagChips();
+  await refreshLibrary();
   bindEvents();
 });
 
@@ -46,6 +48,10 @@ async function ensureAlbum() {
 
 function bindEvents() {
   $('#import-btn').addEventListener('click', importPhotos);
+  $('#file-input').addEventListener('change', updateSelectedLabel);
+  $('#folder-input').addEventListener('change', updateSelectedLabel);
+  $('#library-sort').addEventListener('change', refreshLibrary);
+  $('#library-refresh').addEventListener('click', refreshLibrary);
   $('#keyword-btn').addEventListener('click', () => runKeyword($('#keyword-input').value));
   $('#keyword-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') runKeyword(e.target.value); });
   $('#period-btn').addEventListener('click', runPeriod);
@@ -54,28 +60,84 @@ function bindEvents() {
   $('#prev-page').addEventListener('click', () => moveSpread(-1));
   $('#next-page').addEventListener('click', () => moveSpread(1));
   $('#share-btn').addEventListener('click', createShare);
+  $('#copy-link-btn').addEventListener('click', copyShareLink);
 }
 
-// ---------- ① 取り込み ----------
+// ---------- ① 取り込み(ファイル / フォルダ一括) ----------
+// ファイル選択とフォルダ選択の両方から画像ファイルだけを集める。
+function collectImageFiles() {
+  const files = [];
+  const seen = new Set();
+  for (const input of [$('#file-input'), $('#folder-input')]) {
+    for (const f of input.files) {
+      if (!isImageFile(f)) continue; // 画像以外(フォルダ内の非画像)はスキップ
+      const key = (f.webkitRelativePath || f.name) + '|' + f.size;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      files.push(f);
+    }
+  }
+  return files;
+}
+
+function isImageFile(f) {
+  if (f.type && f.type.startsWith('image/')) return true;
+  return /\.(jpe?g|png|gif|bmp|webp|tiff?|heic|heif)$/i.test(f.name);
+}
+
+function updateSelectedLabel() {
+  const files = collectImageFiles();
+  const label = $('#import-selected');
+  if (!files.length) { label.textContent = ''; return; }
+  label.textContent = `画像 ${files.length} 枚を選択中（画像以外は自動スキップ）`;
+}
+
 async function importPhotos() {
-  const input = $('#file-input');
-  if (!input.files.length) { alert('写真を選んでください'); return; }
+  const files = collectImageFiles();
+  if (!files.length) { alert('画像ファイルを選んでください（フォルダ内の画像でもOK）'); return; }
   const prog = $('#import-progress');
-  prog.innerHTML = `取り込み中… (${input.files.length}枚)`;
+  prog.innerHTML = `取り込み中… (${files.length}枚)`;
   const fd = new FormData();
-  for (const f of input.files) fd.append('files', f);
+  for (const f of files) fd.append('files', f);
   try {
     const r = await fetch('/photos/import', { method: 'POST', body: fd });
     const j = await r.json();
+    const ok = j.imported.filter((it) => !it.error).length;
+    const ng = j.imported.length - ok;
     const lines = j.imported.map((it) => {
       if (it.error) return `<div class="err">✗ ${it.filename}: ${it.error}</div>`;
       const fb = it.fallback_used ? ' <span class="fb">(簡易タグ)</span>' : ' <span class="ok">✓</span>';
       return `<div>${it.filename}${fb}</div>`;
     });
-    prog.innerHTML = `取り込み完了: ${j.imported.length}枚` + lines.join('');
+    prog.innerHTML = `取り込み完了: 成功 ${ok}枚` + (ng ? ` / 失敗 ${ng}枚` : '') + lines.join('');
     await loadTagChips();
+    await refreshLibrary();
   } catch (e) {
     prog.innerHTML = `<div class="err">取り込み失敗: ${e}</div>`;
+  }
+}
+
+// ---------- ② ライブラリ(取り込み済み一覧) ----------
+async function refreshLibrary() {
+  const sort = $('#library-sort').value || 'date_desc';
+  const grid = $('#library-grid');
+  try {
+    const r = await fetch('/photos?sort=' + encodeURIComponent(sort));
+    const j = await r.json();
+    grid.innerHTML = '';
+    if (!j.photos.length) {
+      grid.innerHTML = '<p class="muted">まだ写真がありません。上で取り込んでください。</p>';
+      return;
+    }
+    j.photos.forEach((p) => {
+      const cell = document.createElement('div');
+      cell.className = 'lib-cell';
+      const when = (p.taken_at || p.imported_at || '').slice(0, 10);
+      cell.innerHTML = `<img src="${p.thumbnail_url}" alt="写真" loading="lazy"><div class="lib-date">${when}</div>`;
+      grid.appendChild(cell);
+    });
+  } catch (e) {
+    grid.innerHTML = `<p class="err">一覧の取得に失敗しました: ${e}</p>`;
   }
 }
 
@@ -188,6 +250,8 @@ async function addToAlbum(photoIds) {
   const r = await fetch(`/albums/${state.albumId}/photos`, { method: 'POST', body: fd });
   const j = await r.json();
   state.pages = j.pages;
+  // ページ構成が変わったので、発行済み共有リンクは失効させる(④)。
+  await invalidateShareOnChange();
   renderBook();
 }
 
@@ -217,33 +281,60 @@ function renderBook() {
   book.innerHTML = '';
   [left, right].forEach((pg) => {
     if (!pg) return;
-    const el = document.createElement('div');
-    el.className = 'page ' + (pg.layout_type || 'single');
-    pg.photos.forEach((ph) => {
-      const img = document.createElement('img');
-      img.src = ph.thumbnail_url;
-      el.appendChild(img);
-    });
-    const no = document.createElement('div');
-    no.className = 'page-no';
-    no.textContent = `${pg.page_index + 1} ページ`;
-    el.appendChild(no);
-    book.appendChild(el);
+    book.appendChild(renderAlbumPage(pg));
   });
   const total = Math.ceil(state.pages.length / 2);
   $('#page-indicator').textContent = `見開き ${state.spread + 1} / ${total}`;
 }
 
-// ---------- 共有 ----------
+// ---------- 共有(④ コピー / ページ構成変化で失効) ----------
+
 async function createShare() {
   if (!state.pages.length) { alert('先に写真をアルバムに追加してください'); return; }
   const r = await fetch(`/albums/${state.albumId}/share`, { method: 'POST' });
   const j = await r.json();
   const url = location.origin + j.view_url;
+  state.share = { token: j.token, url };
   const box = $('#share-result');
   box.classList.remove('hidden');
   box.innerHTML = `
     <div>🔗 このリンクを知っている人は、アカウント不要で閲覧できます:</div>
-    <input type="text" readonly value="${url}" onclick="this.select()">
-    <div><a href="${j.view_url}" target="_blank">共有ビューを開く →</a></div>`;
+    <input id="share-url" type="text" readonly value="${url}" onclick="this.select()">
+    <div><a href="${j.view_url}" target="_blank">共有ビューを開く →</a></div>
+    <div id="copy-feedback" class="copy-feedback"></div>`;
+  // 発行に成功したのでコピーボタンを活性化。
+  $('#copy-link-btn').disabled = false;
+}
+
+async function copyShareLink() {
+  if (!state.share) return;
+  try {
+    await navigator.clipboard.writeText(state.share.url);
+    showCopyFeedback('✓ コピーしました');
+  } catch {
+    // クリップボードAPIが使えない環境向けのフォールバック(手動選択)。
+    const input = $('#share-url');
+    if (input) { input.focus(); input.select(); }
+    showCopyFeedback('コピーできない場合はリンクを選択してコピーしてください');
+  }
+}
+
+function showCopyFeedback(msg) {
+  const fb = $('#copy-feedback');
+  if (fb) fb.textContent = msg;
+}
+
+// 表示中アルバムのページ構成が変わったら、発行済み共有リンクを失効させる。
+async function invalidateShareOnChange() {
+  if (!state.share) return;
+  const token = state.share.token;
+  state.share = null;
+  try {
+    await fetch(`/albums/${state.albumId}/share/${encodeURIComponent(token)}`, { method: 'DELETE' });
+  } catch {}
+  // 画面上の表示リンクをクリアし、コピーボタンを非活性に戻す。
+  const box = $('#share-result');
+  box.classList.add('hidden');
+  box.innerHTML = '';
+  $('#copy-link-btn').disabled = true;
 }

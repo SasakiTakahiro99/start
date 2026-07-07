@@ -22,10 +22,39 @@
   <!-- S1 取り込み -->
   <section id="s-import" class="panel">
     <h2>① 写真を取り込む</h2>
-    <p class="hint">写真を選ぶと、日付・場所・色・被写体を自動で読み取ります。</p>
-    <input type="file" id="file-input" accept="image/*" multiple>
-    <button id="import-btn">取り込む</button>
+    <p class="hint">写真を選ぶと、日付・場所・色・被写体を自動で読み取ります。フォルダごとまとめて取り込めます（画像以外は自動でスキップ）。</p>
+    <div class="row">
+      <label class="file-pick">
+        <span>🖼 写真を選ぶ</span>
+        <input type="file" id="file-input" accept="image/*" multiple>
+      </label>
+      <label class="file-pick">
+        <span>📁 フォルダごと選ぶ</span>
+        <input type="file" id="folder-input" webkitdirectory directory multiple>
+      </label>
+      <button id="import-btn" class="primary">取り込む</button>
+    </div>
+    <div id="import-selected" class="muted"></div>
     <div id="import-progress" class="progress"></div>
+  </section>
+
+  <!-- S1b ライブラリ(取り込み済み一覧) -->
+  <section id="s-library" class="panel">
+    <div class="library-head">
+      <h2>🗂 ライブラリ（取り込み済み写真）</h2>
+      <div class="library-controls">
+        <label for="library-sort" class="muted">並び順</label>
+        <select id="library-sort">
+          <option value="date_desc">日付（新しい順）</option>
+          <option value="date_asc">日付（古い順）</option>
+          <option value="color">色順</option>
+        </select>
+        <button id="library-refresh" class="ghost">更新</button>
+      </div>
+    </div>
+    <div id="library-grid" class="library-grid">
+      <p class="muted">まだ写真がありません。上で取り込んでください。</p>
+    </div>
   </section>
 
   <!-- S2 探す -->
@@ -73,6 +102,7 @@
       <span id="page-indicator">-</span>
       <button id="next-page">次へ ▶</button>
       <button id="share-btn" class="primary">🔗 共有リンクを発行</button>
+      <button id="copy-link-btn" disabled>📋 クリップボードにコピー</button>
     </div>
     <div id="book" class="book">
       <div class="book-empty">まだ写真がありません。②で写真を選んでください。</div>
@@ -81,6 +111,7 @@
   </section>
 </main>
 
+<script src="layout.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

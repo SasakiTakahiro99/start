@@ -23,6 +23,7 @@ import clip_engine
 import config
 import db
 import ingest
+import library
 import search
 
 config.ensure_dirs()
@@ -89,19 +90,31 @@ def photo_thumbnail(photo_id: int):
 
 
 @app.get("/photos")
-def list_photos():
-    photos = db.all_photos_done()
+def list_photos(sort: str = "date_desc"):
+    """取り込み済み写真の一覧(ライブラリ)。
+
+    sort: date_desc(既定=新しい順) / date_asc / color(主要色順)。
+    """
+    if sort == "color":
+        photos = library.sorted_by_color(db.all_photos_done("date_desc"))
+    elif sort == "date_asc":
+        photos = db.all_photos_done("date_asc")
+    else:
+        photos = db.all_photos_done("date_desc")
     return {
+        "sort": sort,
+        "count": len(photos),
         "photos": [
             {
                 "photo_id": p["id"],
                 "thumbnail_url": f"/photos/{p['id']}/thumbnail",
                 "taken_at": p.get("taken_at"),
+                "imported_at": p.get("imported_at"),
                 "quality_score": p.get("quality_score"),
                 "tags": [t["label"] for t in db.get_tags(p["id"])],
             }
             for p in photos
-        ]
+        ],
     }
 
 
@@ -181,6 +194,7 @@ def _pages_dto(pages):
             photos.append({
                 "photo_id": pp["photo_id"],
                 "slot_index": pp["slot_index"],
+                "aspect_ratio": pp.get("aspect_ratio"),
                 "thumbnail_url": f"/photos/{pp['photo_id']}/thumbnail",
             })
         out.append({

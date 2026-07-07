@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>共有アルバム</title>
 <link rel="stylesheet" href="style.css">
+<script src="layout.js"></script>
 </head>
 <body>
 <header>
@@ -65,18 +66,7 @@ function render() {
   book.innerHTML = '';
   [left, right].forEach((pg) => {
     if (!pg) return;
-    const el = document.createElement('div');
-    el.className = 'page ' + (pg.layout_type || 'single');
-    pg.photos.forEach((ph) => {
-      const img = document.createElement('img');
-      img.src = ph.thumbnail_url;
-      el.appendChild(img);
-    });
-    const no = document.createElement('div');
-    no.className = 'page-no';
-    no.textContent = `${pg.page_index + 1} ページ`;
-    el.appendChild(no);
-    book.appendChild(el);
+    book.appendChild(renderAlbumPage(pg));
   });
   $('#page-indicator').textContent = `見開き ${state.spread + 1} / ${Math.ceil(state.pages.length / 2)}`;
 }

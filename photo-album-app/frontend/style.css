@@ -110,12 +110,18 @@ button.big { font-size: 15px; padding: 12px 18px; }
 .page {
   background: #fff; border-radius: 6px; flex: 1; max-width: 46%;
   box-shadow: var(--shadow); padding: 10px;
-  display: grid; gap: 8px;
+  display: grid; gap: 6px;
+  grid-template-columns: repeat(var(--cols, 1), 1fr);
+  grid-auto-rows: 1fr;
+  grid-auto-flow: row dense;
+  align-content: start;
 }
-.page.single { grid-template-columns: 1fr; }
-.page.duo { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
-.page.grid { grid-template-columns: 1fr 1fr; }
-.page img { width: 100%; height: 100%; object-fit: cover; border-radius: 4px; min-height: 120px; }
+/* 枚数が少ないページは1マスが大きくなりすぎないよう、行の縦横比を整える */
+.page.single { grid-auto-rows: minmax(200px, 1fr); }
+.page.duo, .page.grid3, .page.grid4 { grid-auto-rows: minmax(130px, 1fr); }
+.page.grid6, .page.grid8, .page.grid10, .page.grid12 { grid-auto-rows: minmax(90px, 1fr); }
+.slot { position: relative; overflow: hidden; border-radius: 4px; min-height: 0; }
+.slot img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .page .page-no { grid-column: 1 / -1; text-align: center; font-size: 11px; color: var(--muted); }
 
 .share-result {
@@ -123,5 +129,41 @@ button.big { font-size: 15px; padding: 12px 18px; }
 }
 .share-result a { color: var(--accent-dark); word-break: break-all; }
 .share-result input { width: 100%; margin: 8px 0; }
+.copy-feedback { font-size: 13px; color: #3f7d54; min-height: 18px; }
+
+button:disabled { opacity: .5; cursor: not-allowed; }
+button:disabled:hover { background: #ece7e0; }
+
+/* ① 取り込み: ファイル/フォルダ選択 */
+.file-pick {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 12px; border: 1px dashed var(--line); border-radius: 8px;
+  background: #fff; cursor: pointer; font-size: 14px; color: var(--ink);
+}
+.file-pick:hover { background: #faf7f2; }
+.file-pick input { display: none; }
+#import-selected { font-size: 13px; margin-top: 6px; }
+
+/* ② ライブラリ一覧 */
+.library-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.library-head h2 { margin: 0; }
+.library-controls { display: flex; align-items: center; gap: 8px; }
+select {
+  padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px;
+  font-size: 14px; background: #fff; color: var(--ink);
+}
+.library-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+}
+.lib-cell {
+  border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+  background: #fff; box-shadow: var(--shadow);
+}
+.lib-cell img { width: 100%; height: 110px; object-fit: cover; display: block; }
+.lib-date { font-size: 11px; color: var(--muted); text-align: center; padding: 4px 2px; }
 
 .hidden { display: none; }

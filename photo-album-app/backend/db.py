@@ -150,10 +150,21 @@ def get_photo(photo_id):
     return dict(row) if row else None
 
 
-def all_photos_done():
-    rows = _conn().execute(
-        "SELECT * FROM photos WHERE meta_status='done' ORDER BY taken_at"
-    ).fetchall()
+def all_photos_done(order: str = "date_desc"):
+    """メタ付与済みの全写真を返す。
+
+    order:
+      - "date_desc"(既定): 撮影日(無ければ取り込み日)の新しい順
+      - "date_asc": 同・古い順
+      - それ以外(色順など): 取得後に呼び出し側で並べ替える前提で、まず日付順で返す
+    """
+    if order == "date_asc":
+        sql = ("SELECT * FROM photos WHERE meta_status='done' "
+               "ORDER BY COALESCE(taken_at, imported_at) ASC, id ASC")
+    else:
+        sql = ("SELECT * FROM photos WHERE meta_status='done' "
+               "ORDER BY COALESCE(taken_at, imported_at) DESC, id DESC")
+    rows = _conn().execute(sql).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -274,7 +285,13 @@ def get_pages(album_id):
     result = []
     for page in pages:
         photos = _conn().execute(
-            "SELECT photo_id, slot_index FROM album_page_photos WHERE album_page_id=? ORDER BY slot_index",
+            """
+            SELECT app.photo_id, app.slot_index, p.aspect_ratio
+            FROM album_page_photos app
+            JOIN photos p ON p.id = app.photo_id
+            WHERE app.album_page_id=?
+            ORDER BY app.slot_index
+            """,
             (page["id"],),
         ).fetchall()
         result.append(
