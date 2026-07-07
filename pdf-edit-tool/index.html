@@ -69,6 +69,80 @@
     margin-bottom: 24px;
   }
 
+  .step-guide {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 24px;
+    padding: 14px 20px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+  }
+
+  .step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--color-text-muted);
+    transition: color 0.15s;
+  }
+
+  .step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    border: 1.5px solid var(--color-border);
+    background: var(--color-bg);
+    color: var(--color-text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+
+  .step-label {
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .step-arrow {
+    color: var(--color-border);
+    font-size: 13px;
+  }
+
+  .step.active {
+    color: var(--color-primary);
+  }
+  .step.active .step-num {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #fff;
+  }
+  .step.active .step-label {
+    font-weight: 700;
+  }
+
+  .step.completed {
+    color: var(--color-accent-green);
+  }
+  .step.completed .step-num {
+    background: var(--color-accent-green-bg);
+    border-color: var(--color-accent-green);
+    color: var(--color-accent-green);
+  }
+  .step.completed .step-num::before {
+    content: "\2713";
+  }
+  .step.completed .step-num span {
+    display: none;
+  }
+
   .toolbar {
     display: flex;
     align-items: center;
@@ -245,6 +319,28 @@
     <span id="editedBadge">編集 0件</span>
   </div>
 
+  <div class="step-guide" id="stepGuide">
+    <div class="step" id="step-1" data-step="1">
+      <span class="step-num"><span>1</span></span>
+      <span class="step-label">ファイルを選ぶ</span>
+    </div>
+    <span class="step-arrow">&rarr;</span>
+    <div class="step" id="step-2" data-step="2">
+      <span class="step-num"><span>2</span></span>
+      <span class="step-label">アップロードして解析</span>
+    </div>
+    <span class="step-arrow">&rarr;</span>
+    <div class="step" id="step-3" data-step="3">
+      <span class="step-num"><span>3</span></span>
+      <span class="step-label">テキストをクリックして編集</span>
+    </div>
+    <span class="step-arrow">&rarr;</span>
+    <div class="step" id="step-4" data-step="4">
+      <span class="step-num"><span>4</span></span>
+      <span class="step-label">編集後PDFをダウンロード</span>
+    </div>
+  </div>
+
   <div class="card">
     <div class="toolbar">
       <input type="file" id="fileInput" accept="application/pdf">
@@ -305,6 +401,24 @@ function updateEditedBadge() {
   editedBadge.textContent = `編集 ${Object.keys(editsByKey).length}件`;
 }
 
+const stepEls = {
+  1: document.getElementById('step-1'),
+  2: document.getElementById('step-2'),
+  3: document.getElementById('step-3'),
+  4: document.getElementById('step-4'),
+};
+
+// completedUpTo: このステップまで完了。activeStep: 現在地としてハイライトするステップ(0なら無し)
+function setStepState(completedUpTo, activeStep) {
+  Object.entries(stepEls).forEach(([num, el]) => {
+    num = Number(num);
+    el.classList.toggle('completed', num <= completedUpTo);
+    el.classList.toggle('active', num === activeStep);
+  });
+}
+
+setStepState(0, 1);
+
 function setButtonLoading(btn, loading) {
   btn.classList.toggle('loading', loading);
 }
@@ -321,6 +435,7 @@ async function handleFile(file) {
   originalFile = file;
   setFileName(file.name);
   downloadBtn.disabled = true;
+  setStepState(1, 2);
 
   uploadBtn.disabled = true;
   downloadBtn.disabled = true;
@@ -342,6 +457,7 @@ async function handleFile(file) {
     Object.keys(editsByKey).forEach(k => delete editsByKey[k]);
     updateEditedBadge();
     renderPages();
+    setStepState(2, 3);
     setStatus(`解析完了: ${pagesData.length}ページ, ${blocksData.length}ブロック検出`);
   } catch (e) {
     setStatus('エラー: ' + e.message);
@@ -465,6 +581,7 @@ function saveEditModal() {
 
   downloadBtn.disabled = Object.keys(editsByKey).length === 0;
   updateEditedBadge();
+  setStepState(3, 4);
   setStatus(`${Object.keys(editsByKey).length}件の編集を保持中。「編集後PDFをダウンロード」を押すと反映されます。`);
 
   closeEditModal();
@@ -518,6 +635,7 @@ downloadBtn.addEventListener('click', async () => {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+    setStepState(4, 0);
     setStatus('編集後PDFをダウンロードしました。');
   } catch (e) {
     setStatus('エラー: ' + e.message);
@@ -538,6 +656,7 @@ resetBtn.addEventListener('click', () => {
   downloadBtn.disabled = true;
   setFileName('');
   updateEditedBadge();
+  setStepState(0, 1);
   setStatus('');
 });
 </script>
