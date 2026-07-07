@@ -149,6 +149,11 @@ def edit_pdf(
     try:
         font = fitz.Font(fontfile=FONT_PATH)
 
+        # 検出フェーズ: 同一ページ内の複数editがある場合、後続editのredact/apply_redactionsが
+        # 先行editの背景塗りつぶし矩形を欠損・分割させてしまい、背景色検出に失敗する
+        # (fallbackで白になる)ことがある。そのため、ページの状態を変更する前に
+        # 全editのrect確定と背景色検出を先に済ませておく。
+        prepared = []
         for edit in edits:
             page = doc[edit["page"]]
             bbox = edit["bbox"]
@@ -162,16 +167,30 @@ def edit_pdf(
                 bbox = compute_value_bbox(edit["text"], bbox, label, font, font_size)
 
             rect = fitz.Rect(bbox)
-
             background_fill = _detect_background_fill(page, rect)
-            fill_color = background_fill if background_fill is not None else (1, 1, 1)
 
-            page.add_redact_annot(rect, fill=fill_color)
+            prepared.append(
+                {
+                    "page": page,
+                    "rect": rect,
+                    "font_size": font_size,
+                    "new_text": edit["new_text"],
+                    "fill_color": background_fill if background_fill is not None else (1, 1, 1),
+                }
+            )
+
+        # 適用フェーズ: 検出済みの背景色を使ってredact + 再描画を順番に適用する。
+        for item in prepared:
+            page = item["page"]
+            rect = item["rect"]
+            font_size = item["font_size"]
+
+            page.add_redact_annot(rect, fill=item["fill_color"])
             page.apply_redactions()
 
             tw = fitz.TextWriter(page.rect)
             baseline_y = rect.y1 - font_size * 0.22
-            tw.append((rect.x0, baseline_y), edit["new_text"], font=font, fontsize=font_size)
+            tw.append((rect.x0, baseline_y), item["new_text"], font=font, fontsize=font_size)
             tw.write_text(page)
 
         _subset_fonts(doc)

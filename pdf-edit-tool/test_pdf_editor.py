@@ -106,6 +106,55 @@ def test_edit_pdf_preserves_cell_background_color(tmp_path):
         out_doc.close()
 
 
+def test_edit_pdf_preserves_background_for_multiple_edits_in_same_box(tmp_path):
+    """同じ背景色ボックス内の複数箇所を1回のedit_pdf()呼び出しで編集しても、
+    2箇所目以降も背景色が保持されることを確認する(1箇所目のredactionが
+    背景矩形を欠損させ、後続editの背景検出に失敗する不具合の再現・回帰テスト)。"""
+    src_pdf = os.path.join(tmp_path, "bg_multi_source.pdf")
+    output_pdf = os.path.join(tmp_path, "bg_multi_output.pdf")
+
+    bg_color = (0.7, 0.9, 1.0)
+    cell_rect = fitz.Rect(50, 50, 350, 100)
+
+    doc = fitz.open()
+    page = doc.new_page()
+    page.draw_rect(cell_rect, color=None, fill=bg_color)
+    page.insert_text((cell_rect.x0 + 5, cell_rect.y1 - 10), "first span", fontsize=12)
+    page.insert_text((cell_rect.x0 + 150, cell_rect.y1 - 10), "second span", fontsize=12)
+    doc.save(src_pdf)
+    doc.close()
+
+    edit_pdf(
+        pdf_path=src_pdf,
+        edits=[
+            {"page": 0, "bbox": [cell_rect.x0, cell_rect.y0, cell_rect.x0 + 60, cell_rect.y1], "new_text": "AAA"},
+            {"page": 0, "bbox": [cell_rect.x0 + 150, cell_rect.y0, cell_rect.x0 + 210, cell_rect.y1], "new_text": "BBB"},
+        ],
+        output_path=output_pdf,
+    )
+    assert os.path.exists(output_pdf)
+
+    out_doc = fitz.open(output_pdf)
+    try:
+        out_page = out_doc[0]
+        pix = out_page.get_pixmap()
+        expected = tuple(round(c * 255) for c in bg_color)
+
+        # 1つ目の編集領域(右端の余白)
+        r1, g1, b1 = pix.pixel(int(cell_rect.x0 + 55), int(cell_rect.y0 + 5))[:3]
+        # 2つ目の編集領域(右端の余白)
+        r2, g2, b2 = pix.pixel(int(cell_rect.x0 + 205), int(cell_rect.y0 + 5))[:3]
+
+        for label, (r, g, b) in (("1つ目", (r1, g1, b1)), ("2つ目", (r2, g2, b2))):
+            assert (r, g, b) != (255, 255, 255), f"{label}の編集領域の背景色が白で上書きされています。"
+            for actual, exp in zip((r, g, b), expected):
+                assert abs(actual - exp) <= 5, (
+                    f"{label}の編集領域で背景色が保持されていません: got={(r, g, b)}, expected={expected}"
+                )
+    finally:
+        out_doc.close()
+
+
 def test_edit_pdf_white_background_still_erases_to_white(tmp_path):
     """背景塗りつぶしがない(白背景)セルを編集した場合、従来通り白で消去・再描画されることを確認する。"""
     src_pdf = os.path.join(tmp_path, "white_source.pdf")
