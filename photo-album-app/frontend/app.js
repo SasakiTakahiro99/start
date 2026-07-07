@@ -291,6 +291,11 @@ function renderBook() {
 
 async function createShare() {
   if (!state.pages.length) { alert('先に写真をアルバムに追加してください'); return; }
+  // 生きた共有トークンは常に最大1つに保つ(J1)。再発行前に既存トークンを必ず失効させる。
+  if (state.share) {
+    const ok = await invalidateShareOnChange();
+    if (!ok) { alert('前回の共有リンクの失効に失敗しました。時間をおいて再度お試しください。'); return; }
+  }
   const r = await fetch(`/albums/${state.albumId}/share`, { method: 'POST' });
   const j = await r.json();
   const url = location.origin + j.view_url;
@@ -325,16 +330,27 @@ function showCopyFeedback(msg) {
 }
 
 // 表示中アルバムのページ構成が変わったら、発行済み共有リンクを失効させる。
+// revoke(DELETE)が成功したときだけ state/UI をクリアする(N1)。成否を真偽値で返す。
 async function invalidateShareOnChange() {
-  if (!state.share) return;
+  if (!state.share) return true;
   const token = state.share.token;
-  state.share = null;
+  let ok = false;
   try {
-    await fetch(`/albums/${state.albumId}/share/${encodeURIComponent(token)}`, { method: 'DELETE' });
-  } catch {}
+    const r = await fetch(`/albums/${state.albumId}/share/${encodeURIComponent(token)}`, { method: 'DELETE' });
+    ok = r.ok;
+  } catch {
+    ok = false;
+  }
+  if (!ok) {
+    // 失効に失敗: UI上だけ失効済みに見せずサーバのトークンを残さないため state を保持。
+    showCopyFeedback('共有リンクの失効に失敗しました。もう一度お試しください。');
+    return false;
+  }
+  state.share = null;
   // 画面上の表示リンクをクリアし、コピーボタンを非活性に戻す。
   const box = $('#share-result');
   box.classList.add('hidden');
   box.innerHTML = '';
   $('#copy-link-btn').disabled = true;
+  return true;
 }

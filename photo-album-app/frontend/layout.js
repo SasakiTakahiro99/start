@@ -3,9 +3,10 @@
 // レイアウト種別(layout_type)ごとに列数を決め、各写真は向きに応じてマス目のspanを持つ。
 (function (global) {
   // 枚数(=layout_type)ごとの基準列数。CSSの .page.gridN と揃える。
+  // 枚数が増えたら列数も増える(少なくとも減らない)よう単調に設定。
   var COLS = {
     single: 1, duo: 1, grid3: 2, grid4: 2,
-    grid6: 3, grid8: 4, grid10: 5, grid12: 4,
+    grid6: 3, grid8: 4, grid10: 5, grid12: 6,
   };
 
   function colsFor(layout, count) {
