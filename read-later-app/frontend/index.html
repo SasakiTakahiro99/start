@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>積読・あとで読む整理</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>📚 積読・あとで読む整理</h1>
+    <span id="llm-badge" class="badge">確認中...</span>
+  </header>
+
+  <main>
+    <section class="add-form">
+      <form id="add-form">
+        <input type="url" id="url-input" placeholder="記事のURLを貼り付け" required>
+        <button type="submit">登録</button>
+      </form>
+      <p id="add-status" class="status-text"></p>
+    </section>
+
+    <section class="filters">
+      <label>絞り込み:
+        <select id="filter-read">
+          <option value="all">すべて</option>
+          <option value="unread" selected>未読のみ</option>
+          <option value="read">既読のみ</option>
+        </select>
+      </label>
+      <label>タグ:
+        <select id="filter-tag">
+          <option value="">すべて</option>
+        </select>
+      </label>
+      <label>並び替え:
+        <select id="sort-order">
+          <option value="date_desc" selected>登録日(新しい順)</option>
+          <option value="date_asc">登録日(古い順)</option>
+          <option value="priority">優先度順</option>
+        </select>
+      </label>
+    </section>
+
+    <section id="article-list" class="article-list">
+      <p class="empty-hint">記事を読み込み中...</p>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

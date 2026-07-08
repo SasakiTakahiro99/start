@@ -1,0 +1,12 @@
+# --- 必須 ---
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+requests>=2.31
+anthropic>=0.40
+
+# --- 本文抽出(いずれか、または両方あるとフォールバックが効く) ---
+trafilatura>=1.8
+readability-lxml>=0.8.1
+beautifulsoup4>=4.12
+lxml>=5.0
