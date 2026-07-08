@@ -11,6 +11,7 @@
 枚数がこれらの境界に満たない場合は、直近下位のグリッドに寄せて余白なく詰める。
 """
 
+import random
 from datetime import datetime
 
 import db
@@ -83,8 +84,13 @@ def _chunk_photos(photos: list):
     return pages
 
 
-def add_photos(album_id: int, photo_ids: list):
-    """写真をアルバム末尾に自動配置して追加。追加後の全ページ構成を返す。"""
+def add_photos(album_id: int, photo_ids: list, group_by_date: bool = True, shuffle: bool = False):
+    """写真をアルバム末尾に自動配置して追加。追加後の全ページ構成を返す。
+
+    group_by_date=False の場合、撮影日でまとめず1枚1ページに独立配置する
+    (「まとめて全部入れる」の逃げ道経由。候補同士が固まって見えないようにする)。
+    shuffle=True の場合、配置するページの並び順をランダムにする。
+    """
     now = datetime.now().isoformat()
     page_index = db.next_page_index(album_id)
 
@@ -95,7 +101,15 @@ def add_photos(album_id: int, photo_ids: list):
             continue
         photos.append(photo)
 
-    for page_photos in _chunk_photos(photos):
+    if group_by_date:
+        pages_to_place = _chunk_photos(photos)
+    else:
+        pages_to_place = [[p] for p in photos]
+
+    if shuffle:
+        random.shuffle(pages_to_place)
+
+    for page_photos in pages_to_place:
         # 実在写真が0枚のページ(空スロットのみのプレースホルダ)は作らない。
         # 端数ページも必ず実在写真だけで構成し、broken imageの元を残さない。
         if not page_photos:

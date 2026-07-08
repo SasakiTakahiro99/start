@@ -4,10 +4,13 @@
 (function (global) {
   // 枚数(=layout_type)ごとの基準列数。CSSの .page.gridN と揃える。
   // 枚数が増えたら列数も増える(少なくとも減らない)よう単調に設定。
+  // single(1枚のみのページ)はページ全体を専有せず、grid6と同じマスサイズで表示する。
   var COLS = {
-    single: 1, duo: 1, grid3: 2, grid4: 2,
+    single: 3, duo: 1, grid3: 2, grid4: 2,
     grid6: 3, grid8: 4, grid10: 5, grid12: 6,
   };
+  // レイアウト種別ごとの最低行数(枚数が少なくてもマスサイズを崩さないための下限)。
+  var MIN_ROWS = { single: 2 };
 
   function colsFor(layout, count) {
     if (COLS[layout]) return COLS[layout];
@@ -73,7 +76,7 @@
     el.style.setProperty('--cols', cols);
     // A4縦の固定枠内に収めるため、行を「行数ぶん等分」する。
     // 各写真のspanから使用行数を求め、grid-template-rowsを均等分割で固定。
-    var rows = rowsFor(photos, cols);
+    var rows = Math.max(rowsFor(photos, cols), MIN_ROWS[layout] || 1);
     el.style.setProperty('--rows', rows);
     el.style.gridTemplateRows = 'repeat(' + rows + ', 1fr)';
 

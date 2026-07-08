@@ -18,6 +18,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["start", "--prefix", "3d-character-creator/server"],
       "port": 3001
+    },
+    {
+      "name": "photo-album",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "uvicorn", "app:app", "--host", "127.0.0.1", "--port", "8010", "--app-dir", "photo-album-app/backend"],
+      "port": 8010
     }
   ]
 }

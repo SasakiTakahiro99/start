@@ -206,19 +206,20 @@ async function pickOne(photoId, btn) {
   btn.disabled = true;
 }
 
-// 逃げ道: 候補を全部入れる
+// 逃げ道: 候補を全部入れる(撮影日でまとめず、1枚ずつランダム順で独立配置)
 async function allInEscape() {
   const ids = state.candidates.map((c) => c.photo_id);
   if (!ids.length) return;
-  await addToAlbum(ids);
+  await addToAlbum(ids, { scatter: true });
   $('#candidates').querySelectorAll('.pick').forEach((b) => {
     b.textContent = '✓ 追加しました'; b.classList.add('picked'); b.disabled = true;
   });
 }
 
-async function addToAlbum(photoIds) {
+async function addToAlbum(photoIds, { scatter = false } = {}) {
   const fd = new FormData();
   fd.append('photo_ids', photoIds.join(','));
+  if (scatter) fd.append('scatter', 'true');
   const r = await fetch(`/albums/${state.albumId}/photos`, { method: 'POST', body: fd });
   const j = await r.json();
   state.pages = j.pages;
