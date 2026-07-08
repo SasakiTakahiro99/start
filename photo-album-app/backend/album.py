@@ -96,6 +96,8 @@ def add_photos(album_id: int, photo_ids: list):
         photos.append(photo)
 
     for page_photos in _chunk_photos(photos):
+        # 実在写真が0枚のページ(空スロットのみのプレースホルダ)は作らない。
+        # 端数ページも必ず実在写真だけで構成し、broken imageの元を残さない。
         if not page_photos:
             continue
         page_id = db.add_page(album_id, page_index, _layout_for(len(page_photos)))

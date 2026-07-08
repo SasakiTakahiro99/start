@@ -249,5 +249,13 @@ def share_view(token: str):
 
 
 # ---------- フロント配信 ----------
+
+@app.get("/library")
+def library_page():
+    """ライブラリ(取り込み済み写真一覧)専用ページを配信。一覧は既存の /photos API を利用。"""
+    import os
+    return FileResponse(os.path.join(config.FRONTEND_DIR, "library.html"), media_type="text/html")
+
+
 # APIルート定義の後にマウントし、ルート("/")でindex.htmlを返す。
 app.mount("/", StaticFiles(directory=config.FRONTEND_DIR, html=True), name="frontend")

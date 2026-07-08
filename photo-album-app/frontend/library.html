@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ライブラリ｜フォトアルバム</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>🗂 ライブラリ（取り込み済み写真）</h1>
+  <a href="/" class="lib-link-btn">← アルバム作成に戻る</a>
+</header>
+
+<main>
+  <section class="panel">
+    <div class="library-head">
+      <div class="library-controls">
+        <label for="library-sort" class="muted">並び順</label>
+        <select id="library-sort">
+          <option value="date_desc">日付（新しい順）</option>
+          <option value="date_asc">日付（古い順）</option>
+          <option value="color">色順</option>
+        </select>
+        <button id="library-refresh" class="ghost">更新</button>
+      </div>
+      <span id="library-count" class="muted"></span>
+    </div>
+    <div id="library-grid" class="library-grid">
+      <p class="muted">読み込み中…</p>
+    </div>
+  </section>
+</main>
+
+<script src="library.js"></script>
+</body>
+</html>

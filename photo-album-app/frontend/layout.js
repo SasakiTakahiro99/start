@@ -25,14 +25,57 @@
     return { colSpan: Math.min(colSpan, cols), rowSpan: rowSpan };
   }
 
+  // 各写真のspanをdense詰めでシミュレートし、必要な行数を求める。
+  // grid-auto-flow: row dense と同じ左詰めルールで、ページ枠内に収まる行数を返す。
+  function rowsFor(photos, cols) {
+    if (!photos.length) return 1;
+    // occ[r] = そのr行で埋まっている列数のビット的マップ(配列で保持)。
+    var grid = [];
+    function ensureRow(r) { while (grid.length <= r) grid.push(new Array(cols).fill(false)); }
+    function fits(r, c, colSpan, rowSpan) {
+      for (var dr = 0; dr < rowSpan; dr++) {
+        ensureRow(r + dr);
+        for (var dc = 0; dc < colSpan; dc++) {
+          if (c + dc >= cols || grid[r + dr][c + dc]) return false;
+        }
+      }
+      return true;
+    }
+    function place(r, c, colSpan, rowSpan) {
+      for (var dr = 0; dr < rowSpan; dr++)
+        for (var dc = 0; dc < colSpan; dc++) grid[r + dr][c + dc] = true;
+    }
+    photos.forEach(function (ph) {
+      var sp = spanFor(ph.aspect_ratio, cols);
+      var colSpan = Math.min(sp.colSpan, cols);
+      var rowSpan = sp.rowSpan;
+      var placed = false;
+      for (var r = 0; !placed; r++) {
+        for (var c = 0; c + colSpan <= cols; c++) {
+          if (fits(r, c, colSpan, rowSpan)) { place(r, c, colSpan, rowSpan); placed = true; break; }
+        }
+      }
+    });
+    return Math.max(1, grid.length);
+  }
+
   // pg: { page_index, layout_type, photos:[{thumbnail_url, aspect_ratio}] }
   function renderAlbumPage(pg) {
     var el = document.createElement('div');
     var layout = pg.layout_type || 'single';
     el.className = 'page ' + layout;
-    var photos = pg.photos || [];
+    // 実在写真(photo_idあり かつ サムネイルURLあり)だけを描く。
+    // 空スロットのプレースホルダは<img>を描かず、broken imageを出さない(二重防御)。
+    var photos = (pg.photos || []).filter(function (ph) {
+      return ph && ph.photo_id != null && ph.thumbnail_url;
+    });
     var cols = colsFor(layout, photos.length);
     el.style.setProperty('--cols', cols);
+    // A4縦の固定枠内に収めるため、行を「行数ぶん等分」する。
+    // 各写真のspanから使用行数を求め、grid-template-rowsを均等分割で固定。
+    var rows = rowsFor(photos, cols);
+    el.style.setProperty('--rows', rows);
+    el.style.gridTemplateRows = 'repeat(' + rows + ', 1fr)';
 
     photos.forEach(function (ph) {
       var fig = document.createElement('div');

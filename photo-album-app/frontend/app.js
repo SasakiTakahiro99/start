@@ -14,7 +14,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   await refreshClipBadge();
   await ensureAlbum();
   await loadTagChips();
-  await refreshLibrary();
   bindEvents();
 });
 
@@ -50,8 +49,6 @@ function bindEvents() {
   $('#import-btn').addEventListener('click', importPhotos);
   $('#file-input').addEventListener('change', updateSelectedLabel);
   $('#folder-input').addEventListener('change', updateSelectedLabel);
-  $('#library-sort').addEventListener('change', refreshLibrary);
-  $('#library-refresh').addEventListener('click', refreshLibrary);
   $('#keyword-btn').addEventListener('click', () => runKeyword($('#keyword-input').value));
   $('#keyword-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') runKeyword(e.target.value); });
   $('#period-btn').addEventListener('click', runPeriod);
@@ -111,33 +108,8 @@ async function importPhotos() {
     });
     prog.innerHTML = `取り込み完了: 成功 ${ok}枚` + (ng ? ` / 失敗 ${ng}枚` : '') + lines.join('');
     await loadTagChips();
-    await refreshLibrary();
   } catch (e) {
     prog.innerHTML = `<div class="err">取り込み失敗: ${e}</div>`;
-  }
-}
-
-// ---------- ② ライブラリ(取り込み済み一覧) ----------
-async function refreshLibrary() {
-  const sort = $('#library-sort').value || 'date_desc';
-  const grid = $('#library-grid');
-  try {
-    const r = await fetch('/photos?sort=' + encodeURIComponent(sort));
-    const j = await r.json();
-    grid.innerHTML = '';
-    if (!j.photos.length) {
-      grid.innerHTML = '<p class="muted">まだ写真がありません。上で取り込んでください。</p>';
-      return;
-    }
-    j.photos.forEach((p) => {
-      const cell = document.createElement('div');
-      cell.className = 'lib-cell';
-      const when = (p.taken_at || p.imported_at || '').slice(0, 10);
-      cell.innerHTML = `<img src="${p.thumbnail_url}" alt="写真" loading="lazy"><div class="lib-date">${when}</div>`;
-      grid.appendChild(cell);
-    });
-  } catch (e) {
-    grid.innerHTML = `<p class="err">一覧の取得に失敗しました: ${e}</p>`;
   }
 }
 
