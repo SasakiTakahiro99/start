@@ -172,11 +172,10 @@ def get_album(album_id: int):
 
 
 @app.post("/albums/{album_id}/photos")
-def add_album_photos(album_id: int, photo_ids: str = Form(...), scatter: bool = Form(False)):
-    """photo_ids はカンマ区切り(1枚 or 3枚一括の逃げ道)。
+def add_album_photos(album_id: int, photo_ids: str = Form(...)):
+    """photo_ids はカンマ区切り(1枚選択・3枚一括どちらも同じ経路)。
 
-    scatter=True (「まとめて全部入れる」経由) の場合、撮影日グルーピングをせず
-    1枚ずつ独立ページ化し、並び順もランダムにする。
+    アルバム末尾のページに上限(MAX_PER_PAGE)まで追記し続け、満杯なら新規ページに続ける。
     """
     if not db.get_album(album_id):
         raise HTTPException(404, "アルバムが見つかりません")
@@ -186,7 +185,7 @@ def add_album_photos(album_id: int, photo_ids: str = Form(...), scatter: bool = 
         raise HTTPException(400, "写真IDは数値で指定してください")
     if not ids:
         raise HTTPException(400, "写真IDが指定されていません")
-    pages = album_mod.add_photos(album_id, ids, group_by_date=not scatter, shuffle=scatter)
+    pages = album_mod.add_photos(album_id, ids)
     return {"album_id": album_id, "pages": _pages_dto(pages)}
 
 

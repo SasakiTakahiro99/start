@@ -268,6 +268,34 @@ def add_page(album_id, page_index, layout_type) -> int:
     return cur.lastrowid
 
 
+def update_page_layout(page_id, layout_type) -> None:
+    conn = _conn()
+    conn.execute(
+        "UPDATE album_pages SET layout_type=? WHERE id=?", (layout_type, page_id)
+    )
+    conn.commit()
+
+
+def get_last_page(album_id):
+    """アルバム末尾のページ(id/page_index/layout_type/現在の枚数)を返す。ページが無ければNone。"""
+    row = _conn().execute(
+        "SELECT id, page_index, layout_type FROM album_pages WHERE album_id=? "
+        "ORDER BY page_index DESC LIMIT 1",
+        (album_id,),
+    ).fetchone()
+    if not row:
+        return None
+    page = dict(row)
+    cnt_row = _conn().execute(
+        "SELECT COUNT(*) AS c, COALESCE(MAX(slot_index), -1) AS m "
+        "FROM album_page_photos WHERE album_page_id=?",
+        (page["id"],),
+    ).fetchone()
+    page["photo_count"] = int(cnt_row["c"])
+    page["max_slot_index"] = int(cnt_row["m"])
+    return page
+
+
 def add_page_photo(album_page_id, photo_id, slot_index) -> None:
     conn = _conn()
     conn.execute(
