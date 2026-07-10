@@ -191,6 +191,7 @@ const WILD_TABLE = ENEMIES.filter(e => !e.boss);
 /* ---------------- プレイヤー状態 ---------------- */
 const player = {
   x: 0, y: 0,            // マップ上のタイル座標
+  dir: "down",           // 向き（ドット絵スプライトの表示に使用）
   level: 1, exp: 0, gold: 0,
   hp: 30, maxhp: 30,
   mp: 8,  maxmp: 8,
@@ -212,8 +213,8 @@ const LEVELS = [
 ];
 
 /* ---------------- ゲーム状態管理 ---------------- */
-const STATE = { FIELD: "field", BATTLE: "battle", GAMEOVER: "gameover", CLEAR: "clear" };
-let gameState = STATE.FIELD;
+const STATE = { TITLE: "title", FIELD: "field", BATTLE: "battle", GAMEOVER: "gameover", CLEAR: "clear" };
+let gameState = STATE.TITLE;   // 起動時はまずタイトル画面
 let bossDefeated = false;
 
 /* ---------------- DOM参照 ---------------- */
@@ -259,47 +260,191 @@ const SE = {
 /* =========================================================================
  * 描画
  * ========================================================================= */
-function drawField() {
-  // マップタイル
-  for (let y = 0; y < MAP_H; y++) {
-    for (let x = 0; x < MAP_W; x++) {
-      const t = TILES[MAP[y][x]];
-      ctx.fillStyle = t.color;
-      ctx.fillRect(x * TILE, y * TILE, TILE, TILE);
-      // 草原に少しテクスチャ
-      if (MAP[y][x] === 0) {
-        ctx.fillStyle = "rgba(0,0,0,0.12)";
-        ctx.fillRect(x*TILE+6, y*TILE+20, 3, 3);
-        ctx.fillRect(x*TILE+20, y*TILE+10, 3, 3);
-      }
-      // 城・町にマーク
-      if (MAP[y][x] === 4) drawEmoji("🏰", x, y);
-      if (MAP[y][x] === 5) drawEmoji("🏠", x, y);
-      if (MAP[y][x] === 3) drawEmoji("⛰️", x, y);
-      if (MAP[y][x] === 2) { /* 水はベタ塗りのまま */ }
+/* ---------------- ドット絵ユーティリティ ----------------
+ * 文字列配列のビットマップを、パレット(文字→色)で塗る簡易スプライト描画。
+ * '.'/' ' は透明。flip=true で左右反転（横向きスプライトの使い回し用）。
+ * imageSmoothingEnabled=false のためピクセルはくっきり出る。
+ */
+function drawBitmap(rows, pal, ox, oy, s, flip) {
+  const w = rows[0].length;
+  for (let y = 0; y < rows.length; y++) {
+    const row = rows[y];
+    for (let x = 0; x < row.length; x++) {
+      const c = row[x];
+      if (c === "." || c === " ") continue;
+      const col = pal[c];
+      if (!col) continue;
+      const dx = flip ? (w - 1 - x) : x;
+      ctx.fillStyle = col;
+      ctx.fillRect(ox + dx * s, oy + y * s, s, s);
     }
   }
-  // 主人公
-  drawEmoji("🧑", player.x, player.y);
+}
+// タイル内の相対座標(px)に矩形を塗る小ヘルパ
+function fr(ox, oy, x, y, w, h, col) { ctx.fillStyle = col; ctx.fillRect(ox + x, oy + y, w, h); }
+
+/* ---------------- フィールドタイルのドット絵 ----------------
+ * 各タイル 32px 内に数色でパターンを描く。TILES[].walk/encounter の意味は不変。
+ */
+function drawGrass(ox, oy) {
+  fr(ox, oy, 0, 0, TILE, TILE, "#3f7d38");        // 下地
+  fr(ox, oy, 0, 18, TILE, 6, "#377030");          // 地面のムラ
+  fr(ox, oy, 8, 4, 10, 3, "#377030");
+  // 草の房（濃い根元＋明るい穂先）
+  const blades = [[6, 18], [15, 9], [23, 20], [11, 25], [27, 12]];
+  for (const [bx, by] of blades) {
+    fr(ox, oy, bx, by, 2, 5, "#2c5f27");
+    fr(ox, oy, bx - 2, by, 2, 3, "#63a544");
+    fr(ox, oy, bx + 2, by + 1, 2, 3, "#63a544");
+  }
+}
+function drawRoad(ox, oy) {
+  fr(ox, oy, 0, 0, TILE, TILE, "#c2a05a");        // 土の下地
+  fr(ox, oy, 0, 0, TILE, 3, "#b08f4a");           // 踏み固めた縁
+  fr(ox, oy, 0, 29, TILE, 3, "#b08f4a");
+  // 小石
+  const peb = [[6, 10], [20, 8], [13, 20], [25, 22], [9, 25]];
+  for (const [bx, by] of peb) fr(ox, oy, bx, by, 3, 2, "#8f7336");
+  fr(ox, oy, 16, 14, 2, 2, "#d8bd80");
+  fr(ox, oy, 24, 16, 2, 2, "#d8bd80");
+}
+function drawWater(ox, oy, tx, ty) {
+  fr(ox, oy, 0, 0, TILE, TILE, "#2f5fae");        // 水面
+  const off = ((tx + ty) & 1) ? 6 : 0;            // タイルごとに波の位相をずらす
+  for (const wy of [6, 16, 26]) {
+    for (let x = -off; x < TILE; x += 12) {
+      fr(ox, oy, Math.max(0, x), wy, Math.min(6, TILE - Math.max(0, x)), 2, "#4a7fca");
+    }
+  }
+  fr(ox, oy, 8 + off, 10, 2, 1, "#a9cdf2");        // 白波ハイライト
+  fr(ox, oy, 22 - off, 22, 2, 1, "#a9cdf2");
+}
+function drawMountain(ox, oy) {
+  fr(ox, oy, 0, 0, TILE, TILE, "#3f7d38");         // 裾野の草地
+  const peak = 16;
+  for (let i = 0; i < 24; i++) {
+    const y = 6 + i;
+    const hw = Math.floor(i * 0.72) + 2;
+    fr(ox, oy, peak - hw, y, hw * 2, 1, "#7a716a");     // 岩肌
+    fr(ox, oy, peak - hw, y, 2, 1, "#9c9288");          // 左の陽当たり
+    fr(ox, oy, peak + hw - 2, y, 2, 1, "#554e48");      // 右の陰
+    if (i < 4) fr(ox, oy, peak - hw + 1, y, hw * 2 - 2, 1, "#e8ecf4"); // 雪冠
+  }
+}
+function drawTown(ox, oy) {
+  drawGrass(ox, oy);
+  // 屋根（赤い三角）
+  for (let i = 0; i < 10; i++) fr(ox, oy, 16 - (2 + i), 6 + i, (2 + i) * 2, 1, "#b5452e");
+  // 壁
+  fr(ox, oy, 7, 15, 18, 13, "#d8c48a");
+  fr(ox, oy, 7, 15, 18, 2, "#e6d6a4");             // 壁のハイライト
+  // ドア・窓
+  fr(ox, oy, 13, 20, 6, 8, "#5a3a1e");
+  fr(ox, oy, 9, 18, 3, 3, "#7fb0e0");
+  fr(ox, oy, 20, 18, 3, 3, "#7fb0e0");
+}
+function drawCastle(ox, oy) {
+  drawGrass(ox, oy);
+  // 石壁
+  fr(ox, oy, 5, 10, 22, 18, "#9aa2ac");
+  fr(ox, oy, 21, 10, 6, 18, "#767d87");            // 右側の陰
+  // 胸壁（凸凹）
+  for (const bx of [5, 11, 17, 23]) fr(ox, oy, bx, 6, 4, 4, "#9aa2ac");
+  // 石目
+  fr(ox, oy, 5, 16, 22, 1, "#767d87");
+  fr(ox, oy, 5, 22, 22, 1, "#767d87");
+  // アーチの門
+  fr(ox, oy, 13, 18, 6, 10, "#35304a");
+  // 旗
+  fr(ox, oy, 16, 1, 1, 6, "#888");
+  fr(ox, oy, 17, 1, 5, 3, "#c02020");
+}
+function drawTile(type, tx, ty) {
+  const ox = tx * TILE, oy = ty * TILE;
+  switch (type) {
+    case 0: drawGrass(ox, oy); break;
+    case 1: drawRoad(ox, oy); break;
+    case 2: drawWater(ox, oy, tx, ty); break;
+    case 3: drawMountain(ox, oy); break;
+    case 4: drawCastle(ox, oy); break;
+    case 5: drawTown(ox, oy); break;
+    default:
+      fr(ox, oy, 0, 0, TILE, TILE, (TILES[type] && TILES[type].color) || "#000");
+  }
 }
 
-function drawEmoji(ch, tx, ty) {
-  ctx.font = (TILE - 6) + "px serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(ch, tx * TILE + TILE / 2, ty * TILE + TILE / 2 + 1);
+/* ---------------- 主人公スプライト（4方向） ----------------
+ * 12x14px を 2px セルで描画（=24x28、タイル中央寄せ）。横向きは side を左右反転して使う。
+ */
+const HERO_PAL = { o: "#1a1a2e", c: "#3f57c8", s: "#f2c79a", e: "#1a1a2e", b: "#c73a2a", a: "#f2c79a", l: "#5a3a1e" };
+const HERO = {
+  down: [
+    "....oooo....", "...occcco...", "..occcccco..", "..osssssso..",
+    "..osesseso..", "..osssssso..", "...ossso....", "..obbbbbbo..",
+    ".oabbbbbbao.", ".oabbbbbbao.", "..obbbbbbo..", "..obbbbbbo..",
+    "..oll..llo..", "..oll..llo..",
+  ],
+  up: [
+    "....oooo....", "...occcco...", "..occcccco..", "..occcccco..",
+    "..occcccco..", "..occcccco..", "...occco....", "..obbbbbbo..",
+    ".oabbbbbbao.", ".oabbbbbbao.", "..obbbbbbo..", "..obbbbbbo..",
+    "..oll..llo..", "..oll..llo..",
+  ],
+  side: [
+    "...oooo.....", "..occcco....", ".occcccco...", ".ocsssseo...",
+    ".ocssssso...", ".occssso....", "..occso.....", "..obbbbbbo..",
+    ".oabbbbbbao.", ".oabbbbbbao.", "..obbbbbbo..", "..obbbbbbo..",
+    "..oll.llo...", "..oll.llo...",
+  ],
+};
+function drawHero(tx, ty, dir) {
+  const ox = tx * TILE + 4, oy = ty * TILE + 2;
+  let rows = HERO.down, flip = false;
+  if (dir === "up") rows = HERO.up;
+  else if (dir === "left") { rows = HERO.side; flip = true; }
+  else if (dir === "right") rows = HERO.side;
+  drawBitmap(rows, HERO_PAL, ox, oy, 2, flip);
 }
 
-// バトル背景＋敵の簡易ドット絵
+function drawField() {
+  for (let y = 0; y < MAP_H; y++) {
+    for (let x = 0; x < MAP_W; x++) {
+      drawTile(MAP[y][x], x, y);
+    }
+  }
+  // 将来: タイトル画面を作る場合、定数 TITLE_IMAGE(PNGのdataURI)があれば
+  //       それを一枚絵として使う受け皿をここ/初期化側に足せる（無ければ現状描画）。
+  drawHero(player.x, player.y, player.dir);
+}
+
+// バトル背景＋敵のドット絵
 function drawBattle(enemy) {
-  ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  // 地面ライン
-  ctx.fillStyle = "#111";
-  ctx.fillRect(0, canvas.height - 60, canvas.width, 60);
+  if (enemy.boss) {
+    // ボス専用の禍々しい背景（暗い赤紫＋足元の赤い霧）
+    const bands = [["#1a0812", 0], ["#2a0c18", 90], ["#3a1020", 170], ["#220a16", 250]];
+    for (let i = 0; i < bands.length; i++) {
+      const y0 = bands[i][1], y1 = (i + 1 < bands.length) ? bands[i + 1][1] : canvas.height - 64;
+      ctx.fillStyle = bands[i][0]; ctx.fillRect(0, y0, canvas.width, y1 - y0);
+    }
+    ctx.fillStyle = "#140610"; ctx.fillRect(0, canvas.height - 64, canvas.width, 64);
+    ctx.fillStyle = "#5a1020"; ctx.fillRect(0, canvas.height - 64, canvas.width, 4);  // 赤い地平線
+  } else {
+    // 夜空〜地面
+    ctx.fillStyle = "#0a0a16";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#161628";
+    ctx.fillRect(0, canvas.height - 64, canvas.width, 64);   // 地面帯
+    ctx.fillStyle = "#20203a";
+    ctx.fillRect(0, canvas.height - 64, canvas.width, 3);    // 地平線
+  }
 
   const cx = canvas.width / 2;
-  const cy = canvas.height / 2 - 10;
+  const cy = canvas.height / 2 - 14;
+  // 足元の影
+  const shW = enemy.boss ? 120 : 70;
+  ctx.fillStyle = "rgba(0,0,0,0.4)";
+  ctx.fillRect(cx - shW / 2, canvas.height - 60, shW, 8);
+
   const scale = enemy.boss ? 7 : 5;
   drawDotMonster(enemy, cx, cy, scale);
 
@@ -311,35 +456,109 @@ function drawBattle(enemy) {
   ctx.fillText(enemy.name + "  HP:" + Math.max(0, enemy.hp), cx, 12);
 }
 
-// 敵の簡易ドット絵（5x5のビットマップを色で塗る）
-function drawDotMonster(enemy, cx, cy, s) {
-  // モンスターごとの5x5パターン（1=描画）
-  const patterns = {
-    slime:  [[0,0,1,0,0],[0,1,1,1,0],[1,1,1,1,1],[1,1,1,1,1],[1,1,0,1,1]],
-    drakee: [[1,0,0,0,1],[1,1,0,1,1],[0,1,1,1,0],[0,1,1,1,0],[0,1,0,1,0]],
-    ghost:  [[0,1,1,1,0],[1,1,1,1,1],[1,0,1,0,1],[1,1,1,1,1],[1,0,1,0,1]],
-    golem:  [[1,1,1,1,1],[1,0,1,0,1],[1,1,1,1,1],[1,0,1,0,1],[1,1,0,1,1]],
-    dragon: [[1,0,1,0,1],[0,1,1,1,0],[1,1,1,1,1],[1,0,1,0,1],[1,1,0,1,1]],
-  };
-  const p = patterns[enemy.id] || patterns.slime;
-  const w = p[0].length, h = p.length;
-  const ox = cx - (w * s) / 2;
-  const oy = cy - (h * s) / 2;
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (p[y][x]) {
-        ctx.fillStyle = enemy.color;
-        ctx.fillRect(ox + x * s, oy + y * s, s, s);
-      }
-    }
+/* ---------------- モンスターのドット絵 ----------------
+ * 各モンスターを 4〜6色のビットマップで描く。id ごとにパレット+パターンを持つ。
+ * 新しい敵を足すときは ENEMIES に加え、ここに rows/pal を追加すると専用の見た目になる。
+ */
+const MONSTERS = {
+  slime: {
+    pal: { o: "#1a5c9c", b: "#33a0e6", h: "#8fd4f7", w: "#ffffff", k: "#0a2038", m: "#12405f" },
+    rows: [
+      "....oooo....", "...obbbbo...", "..obbbbbbo..", ".obbhbbbbbo.",
+      "obbbbbbbbbbo", "obwkbbbbwkbo", "obbbbbbbbbbo", "obbbbmmmmbbo",
+      ".obbbbbbbbo.", "..oooooooo..",
+    ],
+  },
+  drakee: {
+    pal: { o: "#3d1a5c", b: "#a755c9", w: "#6e2f96", e: "#ffffff", k: "#1a0f24" },
+    rows: [
+      "o.........o", "oo.......oo", "owo.ooo.owo", "owwobbbowwo",
+      ".wobbbbbow.", ".wobebebow.", ".wobbkbbow.", "..obbbbbo..",
+      "...o.b.o...",
+    ],
+  },
+  ghost: {
+    pal: { o: "#8890a0", b: "#eef0f8", s: "#cfd4e2", e: "#20202e" },
+    rows: [
+      "...oooo....", "..obbbbo...", ".obbbbbbo..", "obbbbbbbso.",
+      "obeebbeebo.", "obeebbeebo.", "obbbbbbbso.", "obbbeebbbo.",
+      "obbbbbbbso.", "o.ob..bo.o.",
+    ],
+  },
+  golem: {
+    pal: { o: "#4a3216", b: "#b8863b", d: "#7a5626", e: "#ffe6a0" },
+    rows: [
+      "..oooooooo..", ".obeebbeebo.", ".obbbbbbbbo.", "oobbbbbbbboo",
+      "obdbbbbbbdbo", "obbbbbbbbbbo", "obbddddddbbo", "obbbbbbbbbbo",
+      "obbo.oo.obbo", "obbo....obbo",
+    ],
+  },
+  dragon: {
+    pal: { o: "#123a16", b: "#3aa02a", r: "#c0202a", e: "#ffd400", w: "#e8f0c8" },
+    rows: [
+      "wo.........ow", "wwo.......oww", ".woo.....oow.", "..oobbbbboo..",
+      ".oobbbbbbboo.", "oobebbbbbeboo", "obbbbbbbbbbbo", "obbrrrbrrrbbo",
+      ".obbbbbbbbbo.", "..obwwwwwbo..", ".oobwwwwwboo.", "oo.o.....o.oo",
+    ],
+  },
+};
+
+/* ---------------- ボス専用の大きなドット絵（りゅうおう） ----------------
+ * 通常の MONSTERS.dragon より一回り大きく・描き込んだ 18x16 の専用グラフィック。
+ * 角・光る目・牙のある大きな口・クリーム色の腹・金の爪。ボス戦でのみ使う。
+ */
+// 左半分(9列)を左右反転して18幅の対称シルエットを作る（手打ちの桁ズレを防ぐ）
+const _BOSS_L = [
+  "....w....", "....wo...", "d...wo.oo", "dd..dobbb",
+  "ddd.obebb", "dddoblbbb", "dddobbbbb", "ddoobrrrr",
+  "d..obtrtr", "...obbwww", "..obbbwww", "..obbbbww",
+  ".obbbbbbw", ".obdbbbdb", ".obbbggbb", "..oggggo.",
+];
+const BOSS_DRAGON = {
+  pal: {
+    o: "#0c2c12", b: "#2f8f28", d: "#1d5e1c", l: "#7fd06a",
+    w: "#ece4c0", r: "#b81f28", t: "#f4f4e8", e: "#ffd027", g: "#e0b83a",
+  },
+  rows: _BOSS_L.map(s => s + s.split("").reverse().join("")),
+};
+
+/* 将来: 定数 BOSS_IMAGE(PNGのdataURI)があれば、ボスをドット絵の代わりに一枚絵で表示する受け皿。
+ * 未定義ならドット絵にフォールバックする（typeofは未宣言でも安全）。 */
+let _bossImg = null;
+function getBossImage() {
+  if (typeof BOSS_IMAGE === "undefined" || !BOSS_IMAGE) return null;
+  if (!_bossImg) {
+    _bossImg = new Image();
+    _bossImg.onload = () => {
+      if (gameState === STATE.BATTLE && battle && battle.enemy.boss) drawBattle(battle.enemy);
+    };
+    _bossImg.src = BOSS_IMAGE;
   }
-  // 目を2つ足す（愛嬌）
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(ox + 1 * s, oy + 1 * s, s, s);
-  ctx.fillRect(ox + 3 * s, oy + 1 * s, s, s);
-  ctx.fillStyle = "#000";
-  ctx.fillRect(ox + 1 * s + s*0.3, oy + 1 * s + s*0.3, s*0.4, s*0.4);
-  ctx.fillRect(ox + 3 * s + s*0.3, oy + 1 * s + s*0.3, s*0.4, s*0.4);
+  return (_bossImg.complete && _bossImg.naturalWidth) ? _bossImg : null;
+}
+
+function drawDotMonster(enemy, cx, cy, s) {
+  if (enemy.boss) {
+    const img = getBossImage();
+    if (img) {
+      const iw = img.naturalWidth, ih = img.naturalHeight;
+      const sc = Math.min(240 / iw, 200 / ih);
+      ctx.drawImage(img, Math.round(cx - iw * sc / 2), Math.round(cy - ih * sc / 2),
+        Math.round(iw * sc), Math.round(ih * sc));
+      return;
+    }
+    // PNGが無ければ専用の大きなドット絵ボスを描く
+    const brw = BOSS_DRAGON.rows[0].length, brh = BOSS_DRAGON.rows.length;
+    const bs = 13;   // 通常敵(scale 5)よりかなり大きく
+    drawBitmap(BOSS_DRAGON.rows, BOSS_DRAGON.pal,
+      Math.round(cx - brw * bs / 2), Math.round(cy - brh * bs / 2), bs, false);
+    return;
+  }
+  const m = MONSTERS[enemy.id] || MONSTERS.slime;
+  const rw = m.rows[0].length, rh = m.rows.length;
+  const ox = Math.round(cx - rw * s / 2);
+  const oy = Math.round(cy - rh * s / 2);
+  drawBitmap(m.rows, m.pal, ox, oy, s, false);
 }
 
 /* =========================================================================
@@ -364,10 +583,11 @@ function addMessage(text) { $message.innerHTML += "<br>" + text; }
  * ========================================================================= */
 function tryMove(dx, dy) {
   if (gameState !== STATE.FIELD) return;
+  player.dir = dx < 0 ? "left" : dx > 0 ? "right" : dy < 0 ? "up" : "down";
   const nx = player.x + dx, ny = player.y + dy;
-  if (nx < 0 || ny < 0 || nx >= MAP_W || ny >= MAP_H) return;
+  if (nx < 0 || ny < 0 || nx >= MAP_W || ny >= MAP_H) { drawField(); return; }
   const tile = TILES[MAP[ny][nx]];
-  if (!tile.walk) { SE.damage(); return; } // 壁・水はブロック
+  if (!tile.walk) { SE.damage(); drawField(); return; } // 壁・水はブロック（向きだけ変える）
   player.x = nx; player.y = ny;
   SE.move();
   drawField();
@@ -622,7 +842,7 @@ function gameOver() {
   ctx.font = "28px monospace";
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.fillText("ゆうしゃは しんでしまった", canvas.width/2, canvas.height/2 - 10);
-  setMessage('<span class="blink">Enter / Z で さいしょから やりなおす…</span>');
+  setMessage('<span class="blink">Enter / Z で さいしょから</span>　（X / Esc で タイトルへ）');
 }
 
 function gameClear() {
@@ -639,13 +859,13 @@ function gameClear() {
   ctx.fillStyle = "#fff";
   ctx.fillText("せかいに へいわが もどった。", canvas.width/2, canvas.height/2 + 12);
   ctx.fillText("- THE END -", canvas.width/2, canvas.height/2 + 42);
-  setMessage('クリアおめでとう！ <span class="blink">Enter / Z で もういちど あそぶ</span>');
+  setMessage('クリアおめでとう！ <span class="blink">Enter / Z で もういちど</span>　（X / Esc で タイトルへ）');
 }
 
 /* ---------------- リセット ---------------- */
 function resetGame() {
   Object.assign(player, {
-    x: 0, y: 0, level: 1, exp: 0, gold: 0,
+    x: 0, y: 0, dir: "down", level: 1, exp: 0, gold: 0,
     hp: 30, maxhp: 30, mp: 8, maxmp: 8, atk: 12, def: 8,
     spells: ["mera", "hoimi"],
   });
@@ -659,6 +879,150 @@ function resetGame() {
 }
 
 /* =========================================================================
+ * タイトル画面（canvasドット絵のキービジュアル＋ロゴ＋点滅プロンプト）
+ * ========================================================================= */
+const TITLE_TEXT = "りゅうおうの ぼうけん";   // ← 題名はここで差し替え可能
+let titleTimer = null, titleBlink = true;
+
+function showTitle() {
+  gameState = STATE.TITLE;
+  hideMenu();
+  battle = null;
+  $status.innerHTML = '<span style="color:#9ec98a">ドラゴンクエスト風 レトロRPG</span>';
+  setMessage("つよき ゆうしゃよ、りゅうおうを たおし へいわを とりもどせ。");
+  if (titleTimer) clearInterval(titleTimer);
+  titleBlink = true;
+  drawTitle();
+  titleTimer = setInterval(() => {
+    if (gameState !== STATE.TITLE) return;
+    titleBlink = !titleBlink;
+    drawTitle();
+  }, 550);
+}
+
+function startGame() {
+  if (titleTimer) { clearInterval(titleTimer); titleTimer = null; }
+  SE.select();
+  resetGame();   // player初期化・FIELDへ・ステータス/メッセージ復帰
+}
+
+function drawTitle() {
+  const W = canvas.width, H = canvas.height;
+  // 空（夕暮れ→夜のグラデを横帯で）
+  const bands = [[0, "#12102e"], [36, "#1b1740"], [72, "#2c2150"], [108, "#4a2b54"],
+    [150, "#7a3a4e"], [188, "#b0522f"], [222, "#dd7a34"]];
+  for (let i = 0; i < bands.length; i++) {
+    const y0 = bands[i][0], y1 = (i + 1 < bands.length) ? bands[i + 1][0] : 250;
+    ctx.fillStyle = bands[i][1]; ctx.fillRect(0, y0, W, y1 - y0);
+  }
+  // 星
+  ctx.fillStyle = "#e8e6ff";
+  const stars = [[30, 24], [70, 50], [120, 18], [180, 60], [220, 30], [300, 20],
+    [350, 54], [400, 34], [455, 70], [485, 22], [150, 90], [260, 82]];
+  for (const [sx, sy] of stars) ctx.fillRect(sx, sy, 2, 2);
+  // 月
+  drawTitleMoon(420, 58, 18);
+  // 地平線の下地
+  ctx.fillStyle = "#16311a"; ctx.fillRect(0, 250, W, H - 250);
+  // 遠景の城とその上を舞う竜のシルエット
+  drawTitleCastle(300, 252);
+  drawTitleDragonSilhouette(372, 116);
+  // 手前の草原の丘
+  drawTitleHill();
+  // 主人公（剣を掲げて城の方を向く）
+  drawTitleHero(150, 322);
+  // ロゴ
+  drawTitleLogo(W / 2, 46);
+  // 開始プロンプト（点滅）
+  if (titleBlink) {
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.font = "16px 'MS Gothic', monospace";
+    ctx.lineWidth = 4; ctx.strokeStyle = "#000";
+    ctx.strokeText("▶ Enter / Z / Space ではじめる", W / 2, H - 22);
+    ctx.fillStyle = "#ffe94d";
+    ctx.fillText("▶ Enter / Z / Space ではじめる", W / 2, H - 22);
+  }
+}
+
+function drawTitleMoon(cx, cy, r) {
+  ctx.fillStyle = "#f2ead0";
+  for (let y = -r; y <= r; y++) {
+    const xw = Math.floor(Math.sqrt(Math.max(0, r * r - y * y)));
+    ctx.fillRect(cx - xw, cy + y, xw * 2, 1);
+  }
+  ctx.fillStyle = "#ddd2ad";
+  ctx.fillRect(cx - 6, cy - 4, 4, 4);
+  ctx.fillRect(cx + 2, cy + 3, 5, 5);
+  ctx.fillRect(cx - 1, cy + 9, 3, 3);
+}
+
+function drawTitleCastle(cx, baseY) {
+  const sil = "#0e0a1e";
+  ctx.fillStyle = sil;
+  ctx.fillRect(cx - 40, baseY - 54, 80, 54);          // 本体
+  ctx.fillRect(cx - 52, baseY - 74, 18, 74);          // 左塔
+  ctx.fillRect(cx + 34, baseY - 74, 18, 74);          // 右塔
+  ctx.fillRect(cx - 13, baseY - 104, 26, 104);        // 中央の高い塔
+  // 胸壁（凸凹）
+  for (const bx of [-52, -44, -36, -13, -3, 7, 34, 42, 50]) ctx.fillRect(cx + bx, baseY - 80, 5, 6);
+  ctx.fillRect(cx - 13, baseY - 110, 5, 8); ctx.fillRect(cx - 1, baseY - 110, 6, 8); ctx.fillRect(cx + 8, baseY - 110, 5, 8);
+  // 不気味に灯る窓
+  ctx.fillStyle = "#7a1520";
+  ctx.fillRect(cx - 3, baseY - 92, 6, 9);
+  ctx.fillStyle = "#c8802a";
+  ctx.fillRect(cx - 46, baseY - 60, 4, 6); ctx.fillRect(cx + 42, baseY - 60, 4, 6);
+  ctx.fillRect(cx - 24, baseY - 34, 4, 6); ctx.fillRect(cx + 20, baseY - 34, 4, 6);
+}
+
+// 遠景の竜シルエット（既存 dragon の形を暗色で流用、目だけ赤く光らせる）
+function drawTitleDragonSilhouette(cx, cy) {
+  const sil = "#0d0a1c";
+  const pal = { o: sil, b: sil, r: sil, e: "#ff4028", w: sil };
+  const rows = MONSTERS.dragon.rows, s = 4;
+  const rw = rows[0].length, rh = rows.length;
+  drawBitmap(rows, pal, Math.round(cx - rw * s / 2), Math.round(cy - rh * s / 2), s, false);
+}
+
+function drawTitleHill() {
+  const W = canvas.width, H = canvas.height;
+  ctx.fillStyle = "#1e3a1c"; ctx.fillRect(0, 262, W, H - 262);   // 奥の丘
+  // 手前の丘（ゆるいうねり）
+  ctx.fillStyle = "#264d1f";
+  for (let x = 0; x < W; x++) {
+    const y = 300 + Math.round(14 * Math.sin(x / 90) + 6 * Math.sin(x / 23));
+    ctx.fillRect(x, y, 1, H - y);
+  }
+  // 草
+  ctx.fillStyle = "#37702c";
+  for (let i = 0; i < 46; i++) {
+    const gx = (i * 41 + 9) % W, gy = 320 + ((i * 17) % 42);
+    ctx.fillRect(gx, gy, 2, 4); ctx.fillRect(gx - 2, gy + 1, 2, 3);
+  }
+}
+
+function drawTitleHero(hx, footY) {
+  const s = 4, w = 12 * s, h = 14 * s;
+  const ox = Math.round(hx - w / 2), oy = footY - h;
+  drawBitmap(HERO.side, HERO_PAL, ox, oy, s, false);   // 城(右)を向く
+  // 掲げた剣（前方＝右手側）
+  const bx = ox + w + 2;
+  ctx.fillStyle = "#c9ced8"; ctx.fillRect(bx, oy - 24, 4, 46);      // 刀身
+  ctx.fillStyle = "#eef2f8"; ctx.fillRect(bx + 1, oy - 24, 1, 46);  // ハイライト
+  ctx.fillStyle = "#e0b83a"; ctx.fillRect(bx - 4, oy + 20, 12, 4);  // 鍔
+  ctx.fillStyle = "#7a4a1e"; ctx.fillRect(bx, oy + 24, 4, 8);       // 柄
+}
+
+function drawTitleLogo(cx, y) {
+  ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.lineJoin = "round";
+  ctx.font = "bold 30px 'MS Gothic', monospace";
+  ctx.fillStyle = "#000"; ctx.fillText(TITLE_TEXT, cx + 3, y + 3);   // 影
+  ctx.lineWidth = 6; ctx.strokeStyle = "#3a1a0a"; ctx.strokeText(TITLE_TEXT, cx, y); // 縁取り
+  ctx.fillStyle = "#ffd94a"; ctx.fillText(TITLE_TEXT, cx, y);        // 本体（金）
+  ctx.font = "12px 'MS Gothic', monospace"; ctx.fillStyle = "#e8e0ff";
+  ctx.fillText("- THE DRAGON QUEST -", cx, y + 26);
+}
+
+/* =========================================================================
  * 入力
  * ========================================================================= */
 window.addEventListener("keydown", (e) => {
@@ -666,6 +1030,11 @@ window.addEventListener("keydown", (e) => {
 
   // 音トグル
   if (k === "m") { soundOn = !soundOn; return; }
+
+  if (gameState === STATE.TITLE) {
+    if (k === "enter" || k === "z" || k === " ") { startGame(); e.preventDefault(); }
+    return;
+  }
 
   if (gameState === STATE.FIELD) {
     if (k === "arrowup" || k === "w")    { tryMove(0, -1); e.preventDefault(); }
@@ -689,15 +1058,16 @@ window.addEventListener("keydown", (e) => {
   }
 
   if (gameState === STATE.GAMEOVER || gameState === STATE.CLEAR) {
-    if (k === "enter" || k === "z" || k === " ") resetGame();
+    if (k === "enter" || k === "z" || k === " ") { resetGame(); e.preventDefault(); }   // 従来どおり即リスタート
+    else if (k === "x" || k === "escape") { showTitle(); e.preventDefault(); }          // タイトルへ戻る
   }
 });
 
 /* =========================================================================
- * 初期化
+ * 初期化 — まずタイトル画面を表示（Enter/Z/Space でゲーム開始）
  * ========================================================================= */
 updateStatus();
-drawField();
+showTitle();
 </script>
 </body>
 </html>
