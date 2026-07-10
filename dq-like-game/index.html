@@ -14,7 +14,6 @@
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0;
-    height: 100%;
     background: #111;
     color: var(--dq-text);
     font-family: "MS Gothic", "Osaka-Mono", "ＭＳ ゴシック", monospace;
@@ -23,37 +22,26 @@
     image-rendering: pixelated;
     user-select: none;
   }
-  /* ゲーム全体を縦フレックスで組み、ビューポート内に必ず収める（ページ縦スクロールを出さない） */
   #game {
-    max-width: 560px;
+    max-width: 640px;
     margin: 0 auto;
-    padding: 6px;
-    max-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    overflow: hidden;
+    padding: 8px;
   }
   h1 {
     text-align: center;
-    font-size: 17px;
+    font-size: 18px;
     letter-spacing: 2px;
-    margin: 2px 0;
+    margin: 8px 0;
     color: var(--dq-blue-light);
     text-shadow: 1px 1px 0 #000;
   }
+  /* プレイ画面は常に固定サイズ（512x384）で表示。縮小はしない。 */
   canvas {
     display: block;
+    margin: 0 auto;
     background: #000;
     image-rendering: pixelated;
     border: 2px solid #333;
-    /* 内部解像度は512x384のまま、表示サイズだけ画面高に応じて縮小して収める */
-    aspect-ratio: 512 / 384;
-    width: auto;
-    height: clamp(200px, calc(100vh - 356px), 384px);
-    max-width: 100%;
-    flex: 0 0 auto;
   }
 
   /* ===== ドラクエ風ウィンドウ（黒地に太い青白枠＋角丸なし） ===== */
@@ -62,15 +50,22 @@
     border: 3px solid #fff;
     outline: 3px solid var(--dq-blue);
     outline-offset: 0;
-    padding: 6px 10px;
-    width: 100%;
-    line-height: 1.5;
+    padding: 8px 10px;
+    margin-top: 8px;
+    line-height: 1.6;
     font-size: 15px;
   }
 
-  /* メッセージログ */
+  /* 下部パネル：メッセージ／戦闘ログ（左）とコマンド選択（右）を同じ枠内で共有（ドラクエ風） */
+  #panel {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+    min-height: 88px;
+  }
   #message {
-    min-height: 54px;
+    flex: 1 1 auto;
+    min-width: 0;
     white-space: pre-wrap;
   }
 
@@ -83,8 +78,13 @@
   }
   #status span { white-space: nowrap; }
 
-  /* コマンドメニュー */
-  #menu { display: none; }
+  /* コマンドメニュー（別段を増やさず、同じ下部枠の右側に表示） */
+  #menu {
+    display: none;
+    flex: 0 0 auto;
+    border-left: 2px solid var(--dq-blue);
+    padding-left: 12px;
+  }
   #menu ul { list-style: none; margin: 0; padding: 0; }
   #menu li {
     padding: 2px 6px 2px 20px;
@@ -102,9 +102,9 @@
 
   .hint {
     text-align: center;
-    font-size: 11px;
+    font-size: 12px;
     color: #888;
-    margin: 0;
+    margin-top: 6px;
   }
   .blink { animation: blink 0.9s steps(1) infinite; }
   @keyframes blink { 50% { opacity: 0; } }
@@ -119,13 +119,14 @@
   <!-- ステータスウィンドウ -->
   <div id="status" class="dq-window"></div>
 
-  <!-- メッセージウィンドウ -->
-  <div id="message" class="dq-window">ゆうしゃよ、りゅうおうを たおすのだ！<br>やじるし/WASDで いどう。くさむらで まものが あらわれる。</div>
-
-  <!-- コマンドウィンドウ（バトル時のみ表示） -->
-  <div id="menu" class="dq-window">
-    <div class="menu-title">コマンド？</div>
-    <ul id="menu-list"></ul>
+  <!-- 下部パネル：メッセージ／戦闘ログとコマンド選択を同じ枠内で共有（ドラクエ風） -->
+  <div id="panel" class="dq-window">
+    <div id="message">ゆうしゃよ、りゅうおうを たおすのだ！<br>やじるし/WASDで いどう。くさむらで まものが あらわれる。</div>
+    <!-- コマンド（バトル時のみ表示。メッセージと同じ枠の右側に出る） -->
+    <div id="menu">
+      <div class="menu-title">コマンド？</div>
+      <ul id="menu-list"></ul>
+    </div>
   </div>
 
   <div class="hint">移動:方向キー/WASD ｜ 決定:Enter/Z/Space ｜ キャンセル:X/Esc ｜ 音:M</div>
