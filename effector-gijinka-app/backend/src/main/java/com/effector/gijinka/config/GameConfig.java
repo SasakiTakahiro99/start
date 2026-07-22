@@ -42,7 +42,8 @@ public final class GameConfig {
     public static final long GACHA_PAID_COST = 500L;
     /** 無料ガチャの週あたり回数。ライブを開催すると回復する。 */
     public static final int GACHA_FREE_PER_WEEK = 1;
-    // レア度別排出ウェイト(やや渋め)。合計は自由、比率で正規化される。
+    // キャラ1体あたりの排出ウェイト(レア度で決定・やや渋め)。プール内の全キャラのウェイト合計に対する比率で抽選する。
+    // 重複排出なし(既所持はプール除外)のため、所持が増えると各レア度の実効排出率は動的に変わる。合計値は自由(比率のみ効く)。
     public static final double GACHA_WEIGHT_NORMAL = 70.0;
     public static final double GACHA_WEIGHT_RARE = 22.0;
     public static final double GACHA_WEIGHT_VINTAGE = 6.0;
