@@ -30,6 +30,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "uvicorn", "app:app", "--host", "127.0.0.1", "--port", "8020", "--app-dir", "read-later-app/backend"],
       "port": 8020
+    },
+    {
+      "name": "effector-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "effector-gijinka-app/frontend"],
+      "port": 5173
     }
   ]
 }
