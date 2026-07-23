@@ -1,7 +1,8 @@
 // バックエンド(Spring Boot)への薄いラッパー。dev では vite プロキシ経由で /api に届く。
+// セッションCookieによる認証のため、常に credentials を送る。
 
 async function req(path, method = 'GET', body) {
-  const opt = { method, headers: {} }
+  const opt = { method, headers: {}, credentials: 'include' }
   if (body !== undefined) {
     opt.headers['Content-Type'] = 'application/json'
     opt.body = JSON.stringify(body)
@@ -17,6 +18,10 @@ async function req(path, method = 'GET', body) {
 }
 
 export const api = {
+  me: () => req('/auth/me'),
+  register: (username, password) => req('/auth/register', 'POST', { username, password }),
+  login: (username, password) => req('/auth/login', 'POST', { username, password }),
+  logout: () => req('/auth/logout', 'POST'),
   catalog: () => req('/catalog'),
   state: () => req('/state'),
   init: (maker, method, characterId) => req('/init', 'POST', { maker, method, characterId }),

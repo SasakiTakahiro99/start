@@ -21,21 +21,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 })
 class OfflineProgressionIntegrationTest {
 
+    /** 認証済みユーザーIDに相当する固定値(このテスト専用)。 */
+    private static final String PLAYER_ID = "offline-user";
+
     @Autowired GameService game;
     @Autowired PlayerStateRepository playerRepo;
 
     @Test
     void longOfflineGapIsBatchedAndCappedAtHardCap() {
-        game.reset();
-        game.init(new Dtos.InitRequest("boss", "od", "boss-sd1"));
+        game.reset(PLAYER_ID);
+        game.init(PLAYER_ID, new Dtos.InitRequest("boss", "od", "boss-sd1"));
 
         // 最終セーブ時刻を遠い過去に書き換え = 長時間オフラインの再現
-        PlayerState p = playerRepo.findById(GameService.PLAYER_ID).orElseThrow();
+        PlayerState p = playerRepo.findById(PLAYER_ID).orElseThrow();
         long moneyBefore = p.getMoney();
         p.setLastSaveMillis(System.currentTimeMillis() - 10_000_000_000L); // 約115日前
         playerRepo.save(p);
 
-        Dtos.StateDto st = game.getState();
+        Dtos.StateDto st = game.getState(PLAYER_ID);
 
         // 経過が長大でもハードキャップ(カンスト)を超えない
         double tech = st.owned().get(0).techParam();
@@ -48,13 +51,13 @@ class OfflineProgressionIntegrationTest {
 
     @Test
     void shortOnlineGapRisesAtBaseRate() {
-        game.reset();
-        game.init(new Dtos.InitRequest("ibanez", "od", "ibz-ts9"));
-        PlayerState p = playerRepo.findById(GameService.PLAYER_ID).orElseThrow();
+        game.reset(PLAYER_ID);
+        game.init(PLAYER_ID, new Dtos.InitRequest("ibanez", "od", "ibz-ts9"));
+        PlayerState p = playerRepo.findById(PLAYER_ID).orElseThrow();
         p.setLastSaveMillis(System.currentTimeMillis() - 5_000L); // 5秒
         playerRepo.save(p);
 
-        Dtos.StateDto st = game.getState();
+        Dtos.StateDto st = game.getState(PLAYER_ID);
         double tech = st.owned().get(0).techParam();
         // 5秒 * base ぶん上がっている(ソフトキャップ未満)
         assertTrue(tech >= 4.0 && tech <= 6.5, "5秒でおよそ base*5 上昇: " + tech);

@@ -7,6 +7,11 @@ public final class Dtos {
 
     private Dtos() {}
 
+    // ---- 認証 ----
+    public record AuthRequest(String username, String password) {}
+
+    public record UserDto(String username) {}
+
     public record ConfigDto(
             double baseRatePerSec,
             double softCap,

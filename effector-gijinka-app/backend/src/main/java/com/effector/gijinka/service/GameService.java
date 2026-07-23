@@ -22,9 +22,6 @@ import java.util.stream.Collectors;
 @Service
 public class GameService {
 
-    /** MVPは固定ユーザー1人。将来は認証したユーザーIDに差し替える。 */
-    public static final String PLAYER_ID = "default";
-
     private final PlayerStateRepository playerRepo;
     private final OwnedCharacterRepository ownedRepo;
 
@@ -33,11 +30,11 @@ public class GameService {
         this.ownedRepo = ownedRepo;
     }
 
-    // ---- player 取得/生成 ----
-    private PlayerState getOrCreate() {
-        return playerRepo.findById(PLAYER_ID).orElseGet(() -> {
+    // ---- player 取得/生成(playerId は認証済みユーザーのユーザー名) ----
+    private PlayerState getOrCreate(String playerId) {
+        return playerRepo.findById(playerId).orElseGet(() -> {
             PlayerState p = new PlayerState();
-            p.setId(PLAYER_ID);
+            p.setId(playerId);
             p.setInitialized(false);
             p.setSenseParam(GameConfig.SENSE_START);
             p.setMoney(0);
@@ -49,8 +46,8 @@ public class GameService {
         });
     }
 
-    private List<OwnedCharacter> owned() {
-        return ownedRepo.findByPlayerId(PLAYER_ID);
+    private List<OwnedCharacter> owned(String playerId) {
+        return ownedRepo.findByPlayerId(playerId);
     }
 
     // ---- 進行の確定(オフライン進行 + オンライン進行 共通) ----
@@ -125,9 +122,9 @@ public class GameService {
 
     // ---- API: 状態取得(進行を確定してから返す) ----
     @Transactional
-    public Dtos.StateDto getState() {
-        PlayerState p = getOrCreate();
-        List<OwnedCharacter> chars = owned();
+    public Dtos.StateDto getState(String playerId) {
+        PlayerState p = getOrCreate(playerId);
+        List<OwnedCharacter> chars = owned(playerId);
         settleProgression(p, chars);
         return buildState(p, chars);
     }
@@ -138,8 +135,8 @@ public class GameService {
 
     // ---- API: 初期化(スターター入手) ----
     @Transactional
-    public Dtos.StateDto init(Dtos.InitRequest req) {
-        PlayerState p = getOrCreate();
+    public Dtos.StateDto init(String playerId, Dtos.InitRequest req) {
+        PlayerState p = getOrCreate(playerId);
         if (p.isInitialized()) {
             throw new IllegalStateException("すでに開始済みです。リセットしてからやり直してください。");
         }
@@ -171,15 +168,15 @@ public class GameService {
         p.setFormationCsv(starterId);
         playerRepo.save(p);
 
-        ownedRepo.save(new OwnedCharacter(PLAYER_ID, starterId, 0.0, now));
-        return buildState(p, owned());
+        ownedRepo.save(new OwnedCharacter(playerId, starterId, 0.0, now));
+        return buildState(p, owned(playerId));
     }
 
     // ---- API: 編成変更 ----
     @Transactional
-    public Dtos.StateDto setFormation(Dtos.FormationRequest req) {
-        PlayerState p = getOrCreate();
-        List<OwnedCharacter> chars = owned();
+    public Dtos.StateDto setFormation(String playerId, Dtos.FormationRequest req) {
+        PlayerState p = getOrCreate(playerId);
+        List<OwnedCharacter> chars = owned(playerId);
         settleProgression(p, chars);
 
         List<String> ids = req.characterIds() == null ? List.of() : req.characterIds();
@@ -198,9 +195,9 @@ public class GameService {
 
     // ---- API: 週次ライブ ----
     @Transactional
-    public Dtos.LiveResultDto runLive() {
-        PlayerState p = getOrCreate();
-        List<OwnedCharacter> chars = owned();
+    public Dtos.LiveResultDto runLive(String playerId) {
+        PlayerState p = getOrCreate(playerId);
+        List<OwnedCharacter> chars = owned(playerId);
         settleProgression(p, chars);
 
         List<String> formation = formationList(p);
@@ -263,9 +260,9 @@ public class GameService {
 
     // ---- API: ガチャ ----
     @Transactional
-    public Dtos.GachaResultDto gacha(Dtos.GachaRequest req) {
-        PlayerState p = getOrCreate();
-        List<OwnedCharacter> chars = owned();
+    public Dtos.GachaResultDto gacha(String playerId, Dtos.GachaRequest req) {
+        PlayerState p = getOrCreate(playerId);
+        List<OwnedCharacter> chars = owned(playerId);
         settleProgression(p, chars);
 
         Set<String> ownedIds = chars.stream().map(OwnedCharacter::getCharacterId).collect(Collectors.toSet());
@@ -290,11 +287,11 @@ public class GameService {
 
         String got = rollFromPool(ownedIds);
         long now = System.currentTimeMillis();
-        ownedRepo.save(new OwnedCharacter(PLAYER_ID, got, 0.0, now));
+        ownedRepo.save(new OwnedCharacter(playerId, got, 0.0, now));
         playerRepo.save(p);
 
         CharacterDef def = Catalog.character(got);
-        return new Dtos.GachaResultDto(got, def.rarity().name(), spent, !paid, buildState(p, owned()));
+        return new Dtos.GachaResultDto(got, def.rarity().name(), spent, !paid, buildState(p, owned(playerId)));
     }
 
     /** 既所持を除外し、レア度ウェイトで1体を抽選する(重複なし)。 */
@@ -315,9 +312,9 @@ public class GameService {
 
     // ---- API: 転生 ----
     @Transactional
-    public Dtos.ReincarnateResultDto reincarnate() {
-        PlayerState p = getOrCreate();
-        List<OwnedCharacter> chars = owned();
+    public Dtos.ReincarnateResultDto reincarnate(String playerId) {
+        PlayerState p = getOrCreate(playerId);
+        List<OwnedCharacter> chars = owned(playerId);
         settleProgression(p, chars);
 
         long maxed = chars.stream().filter(c -> ProgressionCalculator.isMaxed(c.getTechParam())).count();
@@ -341,10 +338,10 @@ public class GameService {
 
     // ---- API: リセット(開発/テスト用) ----
     @Transactional
-    public Dtos.StateDto reset() {
-        List<OwnedCharacter> chars = owned();
+    public Dtos.StateDto reset(String playerId) {
+        List<OwnedCharacter> chars = owned(playerId);
         ownedRepo.deleteAll(chars);
-        playerRepo.deleteById(PLAYER_ID);
-        return getState();
+        playerRepo.deleteById(playerId);
+        return getState(playerId);
     }
 }

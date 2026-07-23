@@ -38,6 +38,11 @@ h2 { margin: 0 0 4px; }
 .stat .k { display: block; font-size: 11px; color: var(--muted); }
 .stat .v { display: block; font-size: 15px; font-weight: 700; }
 
+/* Account */
+.account { display: flex; align-items: center; gap: 10px; }
+.account-name { font-size: 13px; color: var(--muted); }
+.logout { background: none; border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 6px 12px; font-size: 12px; }
+
 /* Tabs */
 .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 14px 0; }
 .tab {
@@ -93,6 +98,16 @@ h2 { margin: 0 0 4px; }
 .method-choices { display: flex; gap: 12px; flex-wrap: wrap; }
 .method { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 10px; padding: 14px 16px; font-size: 14px; }
 .method.sel { border-color: var(--accent); background: var(--panel2); }
+
+/* Auth */
+.auth-form { display: flex; flex-direction: column; gap: 14px; max-width: 340px; margin-top: 20px; }
+.auth-form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
+.auth-form input {
+  background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 8px;
+  padding: 10px 12px; font-size: 15px;
+}
+.auth-error { color: var(--err); font-size: 13px; margin: 0; }
+.link { background: none; border: none; color: var(--accent); font-size: 13px; margin-top: 18px; padding: 0; text-decoration: underline; }
 
 /* Practice */
 .owned-list { display: flex; flex-direction: column; gap: 10px; }

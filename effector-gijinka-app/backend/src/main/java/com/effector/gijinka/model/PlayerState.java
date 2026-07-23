@@ -4,7 +4,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 
-/** プレイヤーのセーブデータ本体(MVPは固定ユーザー1件)。 */
+/** プレイヤーのセーブデータ本体。ユーザー(username)ごとに1件持ち、複数アカウントに対応する。 */
 @Entity
 public class PlayerState {
 

@@ -2,14 +2,12 @@ package com.effector.gijinka.controller;
 
 import com.effector.gijinka.catalog.Catalog;
 import com.effector.gijinka.dto.Dtos;
-import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/catalog")
-@CrossOrigin
 public class CatalogController {
 
     @GetMapping
